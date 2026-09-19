@@ -1,0 +1,212 @@
+{
+  "title": "Data Pipeline Health",
+  "uid": "pipeline-health",
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Macro (FRED)",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT status FROM pipeline_runs WHERE pipeline = 'macro' ORDER BY started_at DESC LIMIT 1",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{
+            "type": "value",
+            "options": {
+              "ok": { "text": "OK", "color": "green" },
+              "error": { "text": "ERROR", "color": "red" },
+              "skipped": { "text": "SKIPPED", "color": "yellow" }
+            }
+          }]
+        }
+      },
+      "options": { "textMode": "value_and_name", "colorMode": "background" }
+    },
+    {
+      "id": 2,
+      "title": "Crypto (CoinGecko)",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT status FROM pipeline_runs WHERE pipeline = 'crypto' ORDER BY started_at DESC LIMIT 1",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{
+            "type": "value",
+            "options": {
+              "ok": { "text": "OK", "color": "green" },
+              "error": { "text": "ERROR", "color": "red" },
+              "skipped": { "text": "SKIPPED", "color": "yellow" }
+            }
+          }]
+        }
+      },
+      "options": { "textMode": "value_and_name", "colorMode": "background" }
+    },
+    {
+      "id": 3,
+      "title": "Fundamentals (SEC)",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT status FROM pipeline_runs WHERE pipeline = 'fundamentals' ORDER BY started_at DESC LIMIT 1",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{
+            "type": "value",
+            "options": {
+              "ok": { "text": "OK", "color": "green" },
+              "error": { "text": "ERROR", "color": "red" },
+              "skipped": { "text": "SKIPPED", "color": "yellow" }
+            }
+          }]
+        }
+      },
+      "options": { "textMode": "value_and_name", "colorMode": "background" }
+    },
+    {
+      "id": 4,
+      "title": "Prices (Alpha Vantage)",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT status FROM pipeline_runs WHERE pipeline = 'prices' ORDER BY started_at DESC LIMIT 1",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{
+            "type": "value",
+            "options": {
+              "ok": { "text": "OK", "color": "green" },
+              "error": { "text": "ERROR", "color": "red" },
+              "skipped": { "text": "SKIPPED", "color": "yellow" }
+            }
+          }]
+        }
+      },
+      "options": { "textMode": "value_and_name", "colorMode": "background" }
+    },
+    {
+      "id": 5,
+      "title": "Success rate (last 24h)",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 5 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT ROUND(100.0 * SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0) AS pct FROM pipeline_runs WHERE started_at > NOW() - INTERVAL '24 hours'",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "steps": [
+        { "value": null, "color": "red" }, { "value": 70, "color": "yellow" }, { "value": 95, "color": "green" }
+      ] } } },
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 6,
+      "title": "Runs in last 24h",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 5 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT COUNT(*) AS n FROM pipeline_runs WHERE started_at > NOW() - INTERVAL '24 hours'",
+        "refId": "A"
+      }],
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 7,
+      "title": "Errors in last 24h",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 5 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT COUNT(*) AS n FROM pipeline_runs WHERE started_at > NOW() - INTERVAL '24 hours' AND status = 'error'",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [
+        { "value": null, "color": "green" }, { "value": 1, "color": "red" }
+      ] } } },
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 8,
+      "title": "Minutes since last successful run",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 5 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT ROUND(EXTRACT(EPOCH FROM (NOW() - MAX(finished_at))) / 60) AS minutes FROM pipeline_runs WHERE status = 'ok'",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "m", "thresholds": { "steps": [
+        { "value": null, "color": "green" }, { "value": 90, "color": "yellow" }, { "value": 180, "color": "red" }
+      ] } } },
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 9,
+      "title": "Rows upserted over time, by pipeline",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "targets": [{
+        "format": "time_series",
+        "rawSql": "SELECT started_at AS \"time\", pipeline, rows_affected FROM pipeline_runs WHERE started_at > NOW() - INTERVAL '7 days' ORDER BY started_at",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 60 } } }
+    },
+    {
+      "id": 10,
+      "title": "Recent runs",
+      "type": "table",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 18 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT started_at AS \"Time\", pipeline AS \"Pipeline\", status AS \"Status\", rows_affected AS \"Rows\", ROUND(EXTRACT(EPOCH FROM (finished_at - started_at))::numeric, 1) AS \"Duration (s)\", detail AS \"Detail\" FROM pipeline_runs ORDER BY started_at DESC LIMIT 50",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "overrides": [{
+          "matcher": { "id": "byName", "options": "Status" },
+          "properties": [{
+            "id": "mappings",
+            "value": [{
+              "type": "value",
+              "options": {
+                "ok": { "text": "OK", "color": "green" },
+                "error": { "text": "ERROR", "color": "red" },
+                "skipped": { "text": "SKIPPED", "color": "yellow" }
+              }
+            }]
+          }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }]
+        }]
+      }
+    }
+  ]
+}

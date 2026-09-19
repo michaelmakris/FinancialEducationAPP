@@ -1,0 +1,104 @@
+{
+  "title": "API Health",
+  "uid": "api-health",
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Requests / sec",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "api-prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "sum(rate(http_requests_total[5m]))",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 } },
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 2,
+      "title": "p95 latency",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "api-prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "steps": [
+        { "value": null, "color": "green" }, { "value": 1, "color": "yellow" }, { "value": 3, "color": "red" }
+      ] } } },
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 3,
+      "title": "5xx errors / sec",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "api-prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "targets": [{
+        "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m]))",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "thresholds": { "steps": [
+        { "value": null, "color": "green" }, { "value": 0.01, "color": "red" }
+      ] } } },
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 4,
+      "title": "Total requests (1h)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "api-prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "targets": [{
+        "expr": "sum(increase(http_requests_total[1h]))",
+        "refId": "A"
+      }],
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 5,
+      "title": "Request rate by endpoint",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "api-prometheus" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
+      "targets": [{
+        "expr": "sum(rate(http_requests_total[1m])) by (handler)",
+        "legendFormat": "{{handler}}",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15 } } }
+    },
+    {
+      "id": 6,
+      "title": "p50 / p95 / p99 latency",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "api-prometheus" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 14 },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 0 } } }
+    },
+    {
+      "id": 7,
+      "title": "Requests by status code",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "api-prometheus" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 23 },
+      "targets": [{
+        "expr": "sum(rate(http_requests_total[1m])) by (status)",
+        "legendFormat": "{{status}}",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } } } }
+    }
+  ]
+}

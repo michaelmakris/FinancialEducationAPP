@@ -1,0 +1,57 @@
+version: "3.9"
+
+# Uses Neon (cloud Postgres) as the database -- DATABASE_URL and the
+# Grafana datasource's discrete PG* fields both come from ../.env. No local
+# Postgres container here; see git history if you want the fully-local
+# Postgres-in-Docker version instead.
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m scripts.seed_demo_data &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  scheduler:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    depends_on:
+      - backend
+    command: python -m scripts.run_ingestion_scheduler
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    env_file:
+      - ../.env
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+
+volumes:
+  grafana_data:
