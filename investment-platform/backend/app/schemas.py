@@ -74,6 +74,30 @@ class SimulationRequest(BaseModel):
         return self
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = []
+
+
+class ChatAction(BaseModel):
+    type: str
+    page: Optional[str] = None
+    ticker: Optional[str] = None
+    tickers: Optional[list[str]] = None
+    side: Optional[str] = None
+    qty: Optional[float] = None
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    actions: list[ChatAction] = []
+
+
 class SimulationResponse(BaseModel):
     amount: float
     horizon_months: float

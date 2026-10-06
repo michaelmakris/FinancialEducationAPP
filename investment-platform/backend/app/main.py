@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from .config import settings
 from .db import init_db
-from .routers import compare, financials, instruments, portfolio, scores, simulation
+from . import monitoring
+from .auth import require
+from .routers import chat, compare, financials, instruments, macro, market, portfolio, scores, simulation
 
 
 @asynccontextmanager
@@ -37,13 +39,22 @@ app.add_middleware(
 )
 
 Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+monitoring.register_metrics()  # market_* data-freshness gauges on the same /metrics
 
-app.include_router(instruments.router)
-app.include_router(scores.router)
-app.include_router(financials.router)
-app.include_router(compare.router)
-app.include_router(portfolio.router)
-app.include_router(simulation.router)
+# Every route needs a token signed by a trusted caller (the BFF) -- see app/auth.py.
+# /health and /metrics stay open for container probes and Prometheus (internal network only).
+_market = [Depends(require("market:read"))]
+app.include_router(instruments.router, dependencies=_market)
+app.include_router(scores.router, dependencies=_market)
+app.include_router(financials.router, dependencies=_market)
+app.include_router(compare.router, dependencies=_market)
+app.include_router(simulation.router, dependencies=_market)
+app.include_router(portfolio.router)  # per-route portfolio:read / portfolio:write
+app.include_router(chat.router)       # chat scope, checked in the route
+# real market data (Euronext Athens, crypto, Greek/EU macro) + its health
+app.include_router(market.router, dependencies=_market)
+app.include_router(macro.router, dependencies=_market)
+app.include_router(monitoring.router, dependencies=[Depends(require("ops:read"))])
 
 
 @app.get("/health")

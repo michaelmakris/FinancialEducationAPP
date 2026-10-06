@@ -28,6 +28,10 @@ except ImportError:
     sys.exit(1)
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
+# The API only accepts BFF-signed tokens. For this dev CLI mint one with:
+#   cd ../bff && python -m scripts.dev_token --sub cli-dev   (valid 5 minutes; dev only)
+API_TOKEN = os.environ.get("API_TOKEN", "")
+_AUTH = {"Authorization": f"Bearer {API_TOKEN}"} if API_TOKEN else {}
 MODEL = "claude-sonnet-5"
 MAX_TOOL_ROUNDS = 4
 
@@ -116,7 +120,7 @@ class ToolError(Exception):
 
 
 def _get(path: str) -> dict:
-    resp = requests.get(f"{API_BASE_URL}{path}", timeout=15)
+    resp = requests.get(f"{API_BASE_URL}{path}", headers=_AUTH, timeout=15)
     if resp.status_code == 404:
         raise ToolError(resp.json().get("detail", "Not found"))
     resp.raise_for_status()
@@ -124,7 +128,7 @@ def _get(path: str) -> dict:
 
 
 def _post(path: str, payload: dict) -> dict:
-    resp = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=30)
+    resp = requests.post(f"{API_BASE_URL}{path}", json=payload, headers=_AUTH, timeout=30)
     if resp.status_code in (400, 404, 422):
         raise ToolError(resp.json().get("detail", "Request rejected"))
     resp.raise_for_status()

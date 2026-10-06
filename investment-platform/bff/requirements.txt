@@ -1,0 +1,16 @@
+fastapi>=0.110,<0.120
+uvicorn[standard]>=0.29,<0.32
+sqlalchemy>=2.0,<2.1
+psycopg2-binary>=2.9,<3.0
+alembic>=1.13,<1.14
+pydantic>=2.6,<3.0
+python-dotenv>=1.0,<2.0
+httpx>=0.27,<0.28
+argon2-cffi>=23.1,<26
+pyjwt[crypto]>=2.8,<3
+prometheus-fastapi-instrumentator>=7.0,<8.0
+pytest>=8.0,<9.0
+pyotp>=2.9,<3
+segno>=1.6,<2
+redis>=5,<7
+fakeredis>=2.20,<3

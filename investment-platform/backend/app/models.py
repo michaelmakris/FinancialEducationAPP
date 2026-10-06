@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import uuid
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -26,14 +26,21 @@ class Instrument(Base):
     asset_type: Mapped[str] = mapped_column(String(20), nullable=False)  # equity | etf | crypto
     exchange: Mapped[str] = mapped_column(String(100), default="")
     currency: Mapped[str] = mapped_column(String(10), default="USD")
+    # "simulated" = the demo dataset (scripts/generate_dataset.py), which the
+    # analytics endpoints assume shares one aligned date grid. Real market data
+    # loaded by pipelines/ (yahoo, binance, ...) is kept apart by this column.
+    data_source: Mapped[str] = mapped_column(String(20), default="simulated", server_default="simulated", index=True)
+    country: Mapped[str] = mapped_column(String(2), default="", server_default="")
+    lei: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)  # links ESEF fundamentals
+    vendor_symbol: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     price_bars: Mapped[list["PriceBar"]] = relationship(back_populates="instrument", cascade="all, delete-orphan")
     financial_facts: Mapped[list["FinancialFact"]] = relationship(back_populates="instrument", cascade="all, delete-orphan")
 
 
 class PriceBar(Base):
-    """One daily close price. Simplified vs. a full OHLCV schema -- see README
-    'What's simplified vs. the full plan' for how to extend this."""
+    """One daily bar. The simulated demo only fills `close`; real market data
+    also fills open/high/low/volume/adj_close."""
     __tablename__ = "price_bars"
     __table_args__ = (UniqueConstraint("instrument_id", "date", name="uq_price_bar_instrument_date"),)
 
@@ -41,8 +48,95 @@ class PriceBar(Base):
     instrument_id: Mapped[str] = mapped_column(String(36), ForeignKey("instruments.id"), index=True, nullable=False)
     date: Mapped[datetime.date] = mapped_column(Date, nullable=False, index=True)
     close: Mapped[float] = mapped_column(Float, nullable=False)
+    open: Mapped[float | None] = mapped_column(Float, nullable=True)
+    high: Mapped[float | None] = mapped_column(Float, nullable=True)
+    low: Mapped[float | None] = mapped_column(Float, nullable=True)
+    volume: Mapped[float | None] = mapped_column(Float, nullable=True)
+    adj_close: Mapped[float | None] = mapped_column(Float, nullable=True)  # split/dividend adjusted
 
     instrument: Mapped["Instrument"] = relationship(back_populates="price_bars")
+
+
+class ReportedFact(Base):
+    """One numeric IFRS fact from an ESEF annual report (consolidated,
+    undimensioned), e.g. concept='Revenue'. Kept raw so ratios can be derived
+    per industry later (banks have no 'Revenue', industrials no 'InterestIncome')."""
+    __tablename__ = "reported_facts"
+    __table_args__ = (UniqueConstraint("instrument_id", "concept", "period_start", "period_end", name="uq_reported_fact"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instrument_id: Mapped[str] = mapped_column(String(36), ForeignKey("instruments.id"), index=True, nullable=False)
+    concept: Mapped[str] = mapped_column(String(200), nullable=False, index=True)  # ifrs-full local name
+    period_start: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)  # None = point-in-time (balance sheet)
+    period_end: Mapped[datetime.date] = mapped_column(Date, nullable=False, index=True)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    unit: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    filing_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="esef")
+
+
+class Indicator(Base):
+    """Catalog row for a time series: Greek/EU macro, rates, FX, crypto sentiment."""
+    __tablename__ = "indicators"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)  # e.g. hicp_yoy, spread_10y
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    geo: Mapped[str] = mapped_column(String(20), nullable=False, default="")  # EL, EU27_2020, U2, US, GLOBAL
+    unit: Mapped[str] = mapped_column(String(30), nullable=False, default="")
+    frequency: Mapped[str] = mapped_column(String(1), nullable=False)  # D | M | Q | A
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    category: Mapped[str] = mapped_column(String(30), nullable=False, default="macro")
+
+
+class IndicatorObservation(Base):
+    """One observation at the series' native frequency; period_date = start of the reference period."""
+    __tablename__ = "indicator_observations"
+    __table_args__ = (UniqueConstraint("indicator_id", "period_date", name="uq_indicator_observation"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    indicator_id: Mapped[str] = mapped_column(String(40), ForeignKey("indicators.id"), index=True, nullable=False)
+    period_date: Mapped[datetime.date] = mapped_column(Date, nullable=False, index=True)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    fetched_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), nullable=False
+    )
+
+
+class IndicatorSnapshot(Base):
+    """What the platform knew about an indicator on as_of_date: latest value,
+    90-day direction, 1y-ago and EU comparators, staleness. One row per
+    indicator per run day (re-runs on the same day replace it)."""
+    __tablename__ = "indicator_snapshots"
+    __table_args__ = (UniqueConstraint("indicator_id", "as_of_date", name="uq_indicator_snapshot"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    indicator_id: Mapped[str] = mapped_column(String(40), ForeignKey("indicators.id"), index=True, nullable=False)
+    as_of_date: Mapped[datetime.date] = mapped_column(Date, nullable=False, index=True)
+    obs_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    value_90d_prior: Mapped[float | None] = mapped_column(Float, nullable=True)
+    direction_90d: Mapped[str] = mapped_column(String(10), nullable=False)  # rising | falling | stable
+    value_1y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    value_eu: Mapped[float | None] = mapped_column(Float, nullable=True)
+    staleness_d: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class CryptoMarketSnapshot(Base):
+    """Daily market-cap / volume / supply snapshot per coin (CoinGecko)."""
+    __tablename__ = "crypto_market_snapshots"
+    __table_args__ = (UniqueConstraint("instrument_id", "date", name="uq_crypto_snapshot"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instrument_id: Mapped[str] = mapped_column(String(36), ForeignKey("instruments.id"), index=True, nullable=False)
+    date: Mapped[datetime.date] = mapped_column(Date, nullable=False, index=True)
+    currency: Mapped[str] = mapped_column(String(10), nullable=False, default="EUR")
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    market_cap: Mapped[float | None] = mapped_column(Float, nullable=True)
+    volume_24h: Mapped[float | None] = mapped_column(Float, nullable=True)
+    circulating_supply: Mapped[float | None] = mapped_column(Float, nullable=True)
+    market_cap_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class FinancialFact(Base):
@@ -86,10 +180,12 @@ class MacroObservation(Base):
 
 
 class Portfolio(Base):
-    """Single-user demo: one row. Add a user_id + auth before multi-tenant use."""
+    """One virtual portfolio per customer (customer_id = the `sub` of the BFF token).
+    Rows created before login existed have customer_id NULL and are never served."""
     __tablename__ = "portfolios"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
     cash: Mapped[float] = mapped_column(Float, nullable=False, default=10000.0)
     starting_cash: Mapped[float] = mapped_column(Float, nullable=False, default=10000.0)
 
@@ -135,6 +231,28 @@ class WatchlistItem(Base):
     ticker: Mapped[str] = mapped_column(String(20), nullable=False)
 
 
+class ChatInteraction(Base):
+    """One row per /chat turn -- the LLM analogue of PipelineRun below. Stores
+    the actual question/response (so conversations are auditable/reviewable)
+    plus health fields (provider, latency, status) that the monitoring
+    dashboard reads directly, the same way it reads pipeline_runs."""
+    __tablename__ = "chat_interactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), index=True
+    )
+    customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    user_message: Mapped[str] = mapped_column(Text, nullable=False)
+    assistant_reply: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)  # anthropic | selfhosted
+    agents_used: Mapped[str] = mapped_column(String(200), nullable=False, default="")  # comma-separated
+    actions_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    status: Mapped[str] = mapped_column(String(10), nullable=False, index=True)  # ok | error
+    detail: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    latency_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+
 class PipelineRun(Base):
     """One row per data-ingestion pipeline invocation (see
     scripts/run_ingestion_scheduler.py) -- the monitoring dashboard reads
@@ -143,7 +261,7 @@ class PipelineRun(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     pipeline: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    status: Mapped[str] = mapped_column(String(10), nullable=False)  # ok | error
+    status: Mapped[str] = mapped_column(String(10), nullable=False)  # ok | partial | skipped | error
     started_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, index=True)
     finished_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
     rows_affected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

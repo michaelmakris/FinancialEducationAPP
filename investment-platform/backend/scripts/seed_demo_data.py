@@ -23,8 +23,8 @@ def seed():
     dataset = build()
     db = SessionLocal()
     try:
-        if db.query(Instrument).count() > 0:
-            print("Database already has instruments -- skipping seed. "
+        if db.query(Instrument).filter(Instrument.data_source == "simulated").count() > 0:
+            print("Database already has the demo instruments -- skipping seed. "
                   "Delete the DB file (or drop tables) to reseed from scratch.")
             return
 

@@ -1,0 +1,156 @@
+# Alert rules for the real-market-data API (/v1) and its data pipelines.
+# Visible in Prometheus (http://localhost:9090/alerts) and in the
+# "Market Data & API" Grafana dashboard. Add an Alertmanager to send them
+# to email/Teams/Slack.
+#
+# The market_* gauges come from backend/app/monitoring.py; the http_* metrics
+# from prometheus-fastapi-instrumentator (status codes grouped as 2xx/4xx/5xx).
+
+groups:
+  - name: market-api
+    rules:
+      - alert: BackendDown
+        expr: up{job="investment-platform-backend"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Backend /metrics not reachable for 2 minutes"
+
+      - alert: MarketApiErrorRate
+        expr: |
+          sum(rate(http_requests_total{handler=~"/v1/.*", status="5xx"}[5m]))
+            / clamp_min(sum(rate(http_requests_total{handler=~"/v1/.*"}[5m])), 1e-9) > 0.05
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "More than 5% of /v1 requests are failing (5xx)"
+
+      - alert: MarketApiSlow
+        expr: |
+          histogram_quantile(0.95, sum by (le, handler) (rate(http_request_duration_seconds_bucket{handler=~"/v1/.*"}[10m]))) > 2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "p95 latency of {{ $labels.handler }} above 2s"
+
+  - name: market-data
+    rules:
+      - alert: MarketMonitoringBroken
+        expr: market_monitoring_scrape_ok == 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Backend cannot read market-data health from the database"
+
+      - alert: MarketPricesStale
+        expr: market_data_stale{dataset=~"equities|crypto"} == 1
+        for: 30m
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.dataset }} prices for {{ $labels.item }} are stale ({{ $value }})"
+
+      - alert: MarketIndicatorNotEligible
+        expr: market_data_stale{dataset="indicators"} == 1
+        for: 6h
+        labels: {severity: warning}
+        annotations:
+          summary: "Indicator {{ $labels.item }} is past its staleness cap (not quotable)"
+
+      - alert: MarketFundamentalsOutdated
+        expr: market_data_stale_items{dataset="fundamentals"} > 0
+        for: 24h
+        labels: {severity: info}
+        annotations:
+          summary: "{{ $value }} issuers have no annual report newer than ~16 months"
+
+      - alert: MarketPipelineOverdue
+        expr: market_pipeline_overdue == 1
+        for: 15m
+        labels: {severity: critical}
+        annotations:
+          summary: "Market job {{ $labels.job }} has not succeeded within its window"
+
+      - alert: MarketPipelineFailed
+        expr: market_pipeline_last_status{status="error"} == 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Last run of market job {{ $labels.job }} failed"
+
+  - name: customer-access
+    rules:
+      - alert: BffDown
+        expr: up{job="bff"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "BFF not reachable: customers cannot sign in or use the app"
+
+      - alert: LoginFailureSpike
+        expr: sum(increase(bff_auth_events_total{event="login_failed"}[10m])) > 50
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $value }} failed logins in 10 minutes (possible credential stuffing)"
+
+      - alert: AccountLockoutSpike
+        expr: sum(increase(bff_auth_events_total{event="account_locked"}[30m])) > 10
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $value }} accounts locked in 30 minutes"
+
+      - alert: BffUpstreamFailing
+        expr: |
+          sum(rate(bff_upstream_requests_total{status=~"5xx|unreachable"}[5m]))
+            / clamp_min(sum(rate(bff_upstream_requests_total[5m])), 1e-9) > 0.05
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "More than 5% of customer API calls fail between BFF and API"
+
+      - alert: BffTokenRejected
+        expr: sum(increase(bff_upstream_requests_total{status="token_rejected"}[5m])) > 0
+        for: 0m
+        labels: {severity: critical}
+        annotations:
+          summary: "API is rejecting BFF-signed tokens (key mismatch or clock skew) -- customers get errors"
+
+      - alert: EmailDeliveryFailing
+        expr: sum(increase(bff_emails_total{outcome="failed"}[15m])) > 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "BFF cannot send email: customers get no verification or password-reset links"
+
+  - name: ai-assistants-mcp
+    rules:
+      - alert: McpDown
+        expr: up{job="mcp"} == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "MCP server not reachable: AI assistants cannot reach customer data"
+
+      - alert: McpKeyChecksFailing
+        expr: sum(increase(mcp_auth_total{result="error"}[5m])) > 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "MCP server cannot verify access keys with the BFF (all assistant calls refused)"
+
+      - alert: McpToolErrorRate
+        expr: |
+          sum(rate(mcp_tool_calls_total{outcome="error"}[10m]))
+            / clamp_min(sum(rate(mcp_tool_calls_total[10m])), 1e-9) > 0.2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "More than 20% of MCP tool calls fail"
+
+      - alert: McpInvalidKeySpike
+        expr: sum(increase(mcp_auth_total{result="invalid"}[10m])) > 100
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $value }} invalid access keys presented in 10 minutes (key guessing?)"

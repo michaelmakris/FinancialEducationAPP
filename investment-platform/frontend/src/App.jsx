@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { api } from "./auth/bff.js";
+import { AccountMenu } from "./auth/AuthGate.jsx";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, Radar, ComposedChart, Area,
@@ -2046,68 +2048,152 @@ function LearnPage() {
 }
 
 /* ============================================================================
-   PAGE: AI ANALYST (preview -- the live agent is a separate Python script,
-   see backend/agent/chat_agent.py in the starter code, not this browser tab)
+   ASSISTANT WIDGET -- live chat against the backend's /chat endpoint, which
+   runs an orchestrator over three specialist agents (analysis, advice,
+   actions). Analysis/advice tools call this app's own analytics API for every
+   factual claim; the actions specialist returns structured actions (navigate,
+   trade) that are applied here, client-side, via the same goTo/onBuy/onSell
+   handlers the rest of the UI uses. Rendered once, unconditionally, at the
+   App shell level (not per-page) so it's always mounted -- that's what keeps
+   the conversation and its open/closed state alive across navigation.
    ============================================================================ */
-const AGENT_TOOLS_REFERENCE = [
-  ["get_company_overview", "Identity and latest price for a ticker."],
-  ["get_company_score", "Full decomposed factor score for a ticker -- every metric, peer percentile, and weight used."],
-  ["get_company_financials", "Valuation, quality, growth, and balance-sheet metrics for a ticker."],
-  ["compare_companies", "Side-by-side metrics and scores for 2-5 tickers."],
-  ["calculate_portfolio_risk", "Current virtual portfolio holdings, allocation, and risk stats."],
-  ["simulate_portfolio", "Runs the Monte Carlo engine for a hypothetical allocation and horizon."],
-];
 
-function AnalystPage({ universeMetrics, scores }) {
-  const example = universeMetrics["NVDA"];
-  const exampleScore = scores["NVDA"];
-  const topRow = (rows) => rows.reduce((best, r) => (r[1] != null && (!best || r[1] > best[1]) ? r : best), null);
-  const topGrowthRow = topRow(exampleScore.breakdown.growth);
-  const topValueRow = topRow(exampleScore.breakdown.value);
+function AssistantWidget({ universeMetrics, portfolio, goTo, onBuy, onSell, setCompareList }) {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState([
+    { role: "assistant", content: 'Hi! Ask me about a company, your portfolio, or ask me to do something -- e.g. "compare Apple vs Google" or "buy 5 shares of NVDA".' },
+  ]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, sending, open]);
+
+  const applyAction = useCallback((action) => {
+    if (action.type === "navigate") {
+      if (action.tickers && action.tickers.length >= 2) {
+        setCompareList(action.tickers.slice(0, 4).map((t) => t.toUpperCase()));
+      }
+      goTo(action.page, action.ticker);
+      return null;
+    }
+    if (action.type === "trade") {
+      const price = universeMetrics[action.ticker]?.price;
+      if (price == null) return `Couldn't find a price for ${action.ticker}, so the trade wasn't placed.`;
+      if (action.side === "buy") {
+        const cost = action.qty * price;
+        if (cost > portfolio.cash) {
+          return `Not enough cash to buy ${action.qty} ${action.ticker} (needs $${cost.toFixed(2)}, have $${portfolio.cash.toFixed(2)}).`;
+        }
+        onBuy(action.ticker, action.qty, price);
+        return null;
+      }
+      const existing = portfolio.positions[action.ticker];
+      if (!existing || action.qty > existing.qty) {
+        return `Not enough ${action.ticker} shares held to sell ${action.qty}.`;
+      }
+      onSell(action.ticker, action.qty, price);
+      return null;
+    }
+    return null;
+  }, [goTo, onBuy, onSell, portfolio, universeMetrics, setCompareList]);
+
+  const send = useCallback(async () => {
+    const text = input.trim();
+    if (!text || sending) return;
+    const history = messages.map(({ role, content }) => ({ role, content }));
+    setInput("");
+    setError(null);
+    setMessages((m) => [...m, { role: "user", content: text }]);
+    setSending(true);
+    try {
+      // through the BFF: the session cookie + CSRF token authenticate the customer
+      const data = await api("/chat", { method: "POST", body: { message: text, history } });
+      const actionNotes = (data.actions || []).map(applyAction).filter(Boolean);
+      const reply = [data.reply, ...actionNotes].filter(Boolean).join("\n\n");
+      setMessages((m) => [...m, { role: "assistant", content: reply || "(no response)" }]);
+    } catch (e) {
+      setError(e.message || "Couldn't reach the AI assistant -- is the backend running?");
+    } finally {
+      setSending(false);
+    }
+  }, [input, sending, messages, applyAction]);
+
+  if (!open) {
+    return (
+      <button
+        className="ip-btn"
+        onClick={() => setOpen(true)}
+        style={{ position: "fixed", right: 24, bottom: 24, zIndex: 1000, borderRadius: 999, width: 52, height: 52, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 20px rgba(0,0,0,0.25)" }}
+        title="AI analyst"
+      >
+        <MessageSquare size={20} />
+      </button>
+    );
+  }
 
   return (
-    <div>
-      <h1 className="ip-page-title">AI analyst</h1>
-      <p className="ip-page-sub">This tab is a preview, not a live chat. The real agent is a Python script (<code>backend/agent/chat_agent.py</code> in the starter code below) that calls Claude with tool-use enabled -- it can only state a number after retrieving it from the API, the same engine powering every other tab.</p>
-
-      <Card title="Design rule">
-        <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-          The assistant is never allowed to invent a metric, price, or score. Every factual claim it makes must come from a tool call against this platform's API. That keeps its answers decomposable and checkable -- exactly like the score breakdowns you see on each asset page -- instead of being an opaque "AI opinion."
+    <div style={{
+      position: "fixed", right: 24, bottom: 24, zIndex: 1000, width: 380, maxWidth: "calc(100vw - 48px)",
+      background: "var(--ip-card-bg, #fff)", border: `1px solid ${COLOR.lineStrong}`, borderRadius: 14,
+      boxShadow: "0 12px 40px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", overflow: "hidden",
+    }}>
+      <div className="ip-row" style={{ padding: "10px 14px", borderBottom: `1px solid ${COLOR.lineStrong}`, justifyContent: "space-between" }}>
+        <div style={{ fontWeight: 600, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
+          <Bot size={16} /> AI analyst
         </div>
-      </Card>
+        <button className="ip-btn secondary sm" onClick={() => setOpen(false)} style={{ padding: 4 }}>
+          <X size={14} />
+        </button>
+      </div>
 
-      <Card title="Tools available to the agent">
-        <table className="ip-table">
-          <tbody>
-            {AGENT_TOOLS_REFERENCE.map(([name, desc]) => (
-              <tr key={name}><td style={{ fontWeight: 600, width: "42%" }}>{name}</td><td style={{ color: COLOR.muted, whiteSpace: "normal" }}>{desc}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 420, overflowY: "auto", padding: "10px 14px" }}>
+        {messages.map((m, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", flexDirection: m.role === "user" ? "row-reverse" : "row" }}>
+            <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: m.role === "user" ? "var(--ip-accent-soft)" : COLOR.lineStrong }}>
+              {m.role === "user" ? <User size={14} /> : <Bot size={14} />}
+            </div>
+            <div style={{
+              background: m.role === "user" ? "var(--ip-accent-soft)" : "transparent",
+              border: `1px solid ${COLOR.lineStrong}`,
+              borderRadius: 10, padding: "8px 12px", fontSize: 13.5, lineHeight: 1.5,
+              whiteSpace: "pre-wrap", maxWidth: "80%",
+            }}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {sending ? (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", color: COLOR.muted, fontSize: 13 }}>
+            <Loader2 size={14} className="ip-spin" /> thinking&hellip;
+          </div>
+        ) : null}
+        <div ref={bottomRef} />
+      </div>
 
-      <Card title={'Worked example: "Why does NVDA score high on growth but weaker on value?"'}>
-        <div style={{ fontSize: 11.5, color: COLOR.muted, marginBottom: 8 }}>
-          The block below is a real <code>get_company_score("NVDA")</code> call executed against this session's live analytics engine -- not a canned example.
+      {error ? (
+        <div style={{ display: "flex", gap: 6, alignItems: "center", color: COLOR.negative, fontSize: 12.5, padding: "0 14px 8px" }}>
+          <AlertTriangle size={14} /> {error}
         </div>
-        <div style={{ background: "var(--ip-accent-soft)", borderRadius: 8, padding: "10px 12px", fontSize: 12.5, marginBottom: 10 }}>
-          <div style={{ color: "var(--ip-accent-deep)", fontWeight: 600, marginBottom: 4 }}>tool_result: get_company_score("NVDA")</div>
-          <div>overall: {Math.round(exampleScore.overall)} · growth: {Math.round(exampleScore.categoryScores.growth)} · value: {Math.round(exampleScore.categoryScores.value)}</div>
-          <div style={{ marginTop: 4 }}>top growth input: {topGrowthRow[0]} → percentile {Math.round(topGrowthRow[1])}</div>
-          <div>top value input: {topValueRow[0]} → percentile {Math.round(topValueRow[1])}</div>
-        </div>
-        <div style={{ fontSize: 13, lineHeight: 1.6 }}>
-          With those numbers in hand, the agent would explain that NVDA's growth score is pulled up by revenue and EPS
-          expansion that ranks near the top of this demo universe, while its value score is held down because its price
-          already reflects that growth -- the P/E, P/B, and EV/EBITDA inputs all rank on the expensive side of the peer
-          set. It would present this as "expensive relative to today's earnings, priced for continued growth,"
-          not as a buy or sell call.
-        </div>
-      </Card>
+      ) : null}
 
-      <AssumptionNote>
-        To run the live agent yourself: set <code>ANTHROPIC_API_KEY</code>, start the backend (<code>uvicorn app.main:app</code>), then run <code>python backend/agent/chat_agent.py</code>. See the backend README for setup.
-      </AssumptionNote>
+      <div className="ip-row" style={{ padding: "10px 14px", borderTop: `1px solid ${COLOR.lineStrong}`, gap: 8 }}>
+        <input
+          className="ip-input"
+          style={{ flex: 1 }}
+          placeholder='Ask about a ticker, or say "buy 5 NVDA"...'
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+          disabled={sending}
+        />
+        <button className="ip-btn" onClick={send} disabled={sending || !input.trim()}>
+          <Send size={14} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -2124,7 +2210,6 @@ const NAV_TABS = [
   ["simulator", "Simulator", SlidersHorizontal],
   ["portfolio", "Portfolio", Briefcase],
   ["learn", "Learn", GraduationCap],
-  ["analyst", "AI analyst", MessageSquare],
 ];
 
 function todayStr() {
@@ -2209,8 +2294,6 @@ export default function App() {
     content = <PortfolioPage portfolio={portfolio} universeMetrics={universeMetrics} onBuy={handleBuy} onSell={handleSell} onReset={handleReset} goTo={goTo} />;
   } else if (page === "learn") {
     content = <LearnPage />;
-  } else if (page === "analyst") {
-    content = <AnalystPage universeMetrics={universeMetrics} scores={scores} />;
   }
 
   return (
@@ -2229,6 +2312,7 @@ export default function App() {
           ))}
         </nav>
         <div className="ip-sidebar-footer">
+          <AccountMenu />
           <ThemePicker value={theme} onChange={setTheme} />
           <span className="ip-demo-pill">Simulated data — not investment advice</span>
         </div>
@@ -2236,6 +2320,14 @@ export default function App() {
       <div className="ip-content">
         <div className="ip-main">{content}</div>
       </div>
+      <AssistantWidget
+        universeMetrics={universeMetrics}
+        portfolio={portfolio}
+        goTo={goTo}
+        onBuy={handleBuy}
+        onSell={handleSell}
+        setCompareList={setCompareList}
+      />
     </div>
   );
 }

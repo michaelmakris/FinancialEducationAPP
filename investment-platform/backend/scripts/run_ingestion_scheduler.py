@@ -31,6 +31,7 @@ from app.config import settings  # noqa: E402
 from app.db import SessionLocal, init_db  # noqa: E402
 from app.models import PipelineRun  # noqa: E402
 from pipelines import crypto_ingest, db_writer, macro_ingest, prices_ingest, sec_ingest  # noqa: E402
+from pipelines import jobs as market_jobs  # noqa: E402
 from scripts.generate_dataset import CRYPTO, EQUITIES, ETFS  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
@@ -146,9 +147,14 @@ if __name__ == "__main__":
         run_all()
         sys.exit(0)
 
-    scheduler = BlockingScheduler()
+    scheduler = BlockingScheduler(timezone="Europe/Athens")
     scheduler.add_job(run_all, "interval", minutes=args.minutes, next_run_time=datetime.datetime.now())
-    log.info(f"Scheduler started -- running every {args.minutes} minute(s). Press Ctrl+C to stop.")
+    # Real market data (Greek equities, crypto, Greek/EU macro, ESEF fundamentals), each on its own cadence.
+    for name, spec in market_jobs.JOBS.items():
+        scheduler.add_job(market_jobs.run_job, "cron", args=[name, SessionLocal], id=f"market.{name}",
+                          coalesce=True, max_instances=1, **spec["cron"])
+    log.info(f"Scheduler started -- demo pipelines every {args.minutes} minute(s), "
+             f"market jobs on cron: {', '.join(market_jobs.JOBS)}. Press Ctrl+C to stop.")
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):

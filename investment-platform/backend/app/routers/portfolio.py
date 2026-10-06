@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models, repo, schemas
+from ..auth import Principal, require
 from ..db import get_db
 from ..services.factors import build_universe_metrics
 
@@ -36,15 +37,15 @@ def _portfolio_out(db: Session, portfolio: models.Portfolio) -> schemas.Portfoli
 
 
 @router.get("", response_model=schemas.PortfolioOut)
-def get_portfolio(db: Session = Depends(get_db)):
-    portfolio = repo.get_or_create_portfolio(db)
+def get_portfolio(db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:read"))):
+    portfolio = repo.get_or_create_portfolio(db, principal.subject)
     return _portfolio_out(db, portfolio)
 
 
 @router.post("/buy", response_model=schemas.PortfolioOut)
-def buy(payload: schemas.TradeRequest, db: Session = Depends(get_db)):
+def buy(payload: schemas.TradeRequest, db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:write"))):
     ticker = payload.ticker.upper()
-    portfolio = repo.get_or_create_portfolio(db)
+    portfolio = repo.get_or_create_portfolio(db, principal.subject)
     instruments = repo.load_instruments(db)
     universe = build_universe_metrics(instruments)
     if ticker not in universe:
@@ -70,9 +71,9 @@ def buy(payload: schemas.TradeRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/sell", response_model=schemas.PortfolioOut)
-def sell(payload: schemas.TradeRequest, db: Session = Depends(get_db)):
+def sell(payload: schemas.TradeRequest, db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:write"))):
     ticker = payload.ticker.upper()
-    portfolio = repo.get_or_create_portfolio(db)
+    portfolio = repo.get_or_create_portfolio(db, principal.subject)
     instruments = repo.load_instruments(db)
     universe = build_universe_metrics(instruments)
     if ticker not in universe:
@@ -96,8 +97,8 @@ def sell(payload: schemas.TradeRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/reset", response_model=schemas.PortfolioOut)
-def reset(db: Session = Depends(get_db)):
-    portfolio = repo.get_or_create_portfolio(db)
+def reset(db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:write"))):
+    portfolio = repo.get_or_create_portfolio(db, principal.subject)
     for p in list(portfolio.positions):
         db.delete(p)
     for t in list(portfolio.transactions):
@@ -109,16 +110,16 @@ def reset(db: Session = Depends(get_db)):
 
 
 @router.get("/watchlist")
-def get_watchlist(db: Session = Depends(get_db)):
-    portfolio = repo.get_or_create_portfolio(db)
+def get_watchlist(db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:read"))):
+    portfolio = repo.get_or_create_portfolio(db, principal.subject)
     items = db.execute(select(models.WatchlistItem).where(models.WatchlistItem.portfolio_id == portfolio.id)).scalars().all()
     return [i.ticker for i in items]
 
 
 @router.post("/watchlist/{ticker}")
-def add_watchlist(ticker: str, db: Session = Depends(get_db)):
+def add_watchlist(ticker: str, db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:write"))):
     ticker = ticker.upper()
-    portfolio = repo.get_or_create_portfolio(db)
+    portfolio = repo.get_or_create_portfolio(db, principal.subject)
     existing = db.execute(
         select(models.WatchlistItem).where(models.WatchlistItem.portfolio_id == portfolio.id, models.WatchlistItem.ticker == ticker)
     ).scalar_one_or_none()
@@ -129,9 +130,9 @@ def add_watchlist(ticker: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/watchlist/{ticker}")
-def remove_watchlist(ticker: str, db: Session = Depends(get_db)):
+def remove_watchlist(ticker: str, db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:write"))):
     ticker = ticker.upper()
-    portfolio = repo.get_or_create_portfolio(db)
+    portfolio = repo.get_or_create_portfolio(db, principal.subject)
     existing = db.execute(
         select(models.WatchlistItem).where(models.WatchlistItem.portfolio_id == portfolio.id, models.WatchlistItem.ticker == ticker)
     ).scalar_one_or_none()

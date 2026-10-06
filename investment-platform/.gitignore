@@ -9,3 +9,5 @@ node_modules/
 dist/
 infra/grafana-server/
 infra/prometheus-server/
+secrets/
+outbox/

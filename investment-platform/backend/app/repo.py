@@ -19,7 +19,12 @@ def load_instruments(db: Session) -> list[dict]:
     a 15-instrument universe took 5-7s per request against Postgres before
     this fix."""
     instruments = db.execute(
-        select(models.Instrument).options(
+        select(models.Instrument)
+        # The analytics services assume one shared, aligned date grid, which only
+        # the simulated demo universe has. Real market data (data_source != simulated)
+        # is served by its own endpoints instead.
+        .where(models.Instrument.data_source == "simulated")
+        .options(
             selectinload(models.Instrument.price_bars),
             selectinload(models.Instrument.financial_facts),
         )
@@ -47,12 +52,36 @@ def load_instruments(db: Session) -> list[dict]:
     return out
 
 
-def get_or_create_portfolio(db: Session) -> models.Portfolio:
-    """Single-user demo: always portfolio id=1. Add auth + a real user_id
-    foreign key before running this multi-tenant."""
-    portfolio = db.get(models.Portfolio, 1)
+def record_chat_interaction(
+    db: Session,
+    *,
+    customer_id: str | None = None,
+    user_message: str,
+    assistant_reply: str,
+    provider: str,
+    agents_used: list[str],
+    actions_json: str,
+    status: str,
+    detail: str,
+    latency_ms: float,
+) -> None:
+    db.add(models.ChatInteraction(
+        customer_id=customer_id,
+        user_message=user_message[:10000], assistant_reply=assistant_reply[:10000],
+        provider=provider, agents_used=",".join(agents_used)[:200], actions_json=actions_json,
+        status=status, detail=detail[:500], latency_ms=latency_ms,
+    ))
+    db.commit()
+
+
+def get_or_create_portfolio(db: Session, customer_id: str) -> models.Portfolio:
+    """Each customer (the `sub` of the caller's token) has their own virtual
+    portfolio, created with the default starting cash on first use."""
+    portfolio = db.execute(
+        select(models.Portfolio).where(models.Portfolio.customer_id == customer_id)
+    ).scalar_one_or_none()
     if portfolio is None:
-        portfolio = models.Portfolio(id=1, cash=10000.0, starting_cash=10000.0)
+        portfolio = models.Portfolio(customer_id=customer_id, cash=10000.0, starting_cash=10000.0)
         db.add(portfolio)
         db.commit()
         db.refresh(portfolio)

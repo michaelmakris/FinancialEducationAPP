@@ -4,6 +4,11 @@ version: "3.9"
 # Grafana datasource's discrete PG* fields both come from ../.env. No local
 # Postgres container here; see git history if you want the fully-local
 # Postgres-in-Docker version instead.
+#
+# backend and frontend bind-mount their source directories and run in
+# reload/dev mode, so code edits on the host are picked up without rebuilding
+# the image -- rebuild (`docker compose up --build`) only after dependency
+# changes (requirements.txt / package.json).
 
 services:
   backend:
@@ -12,12 +17,89 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ../.env
+    environment:
+      # Only calls carrying a token signed by the BFF's key are served (backend/app/auth.py).
+      - API_AUTH_MODE=required
+      - API_TRUSTED_ISSUERS=bff=/secrets/bff_ed25519_public.pem,mcp=/secrets/mcp_ed25519_public.pem
     ports:
-      - "8000:8000"
+      - "8000:8000"   # for local debugging only; nothing is served without a BFF-signed token
+    volumes:
+      - ../backend:/app
+      - ../secrets/bff_ed25519_public.pem:/secrets/bff_ed25519_public.pem:ro
+      - ../secrets/mcp_ed25519_public.pem:/secrets/mcp_ed25519_public.pem:ro
     command: >
       sh -c "alembic upgrade head &&
              python -m scripts.seed_demo_data &&
-             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - BFF_PROXY_TARGET=http://bff:8080   # vite.config.js proxies /bff/* here
+    depends_on:
+      - bff
+
+  # Backend-for-frontend: customer login/sessions + the only route from the browser to the API.
+  # First run: `python -m scripts.generate_keys` in bff/ (writes ../secrets/bff_ed25519_*.pem).
+  bff:
+    build:
+      context: ../bff
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      - BFF_API_BASE_URL=http://backend:8000
+      - BFF_SIGNING_KEY_FILE=/secrets/bff_ed25519_private.pem
+      # Browsers send Secure cookies to http://localhost only; set true behind HTTPS.
+      - BFF_COOKIE_SECURE=${BFF_COOKIE_SECURE:-false}
+      - BFF_DATA_KEY_FILE=/secrets/bff_data_key
+      - BFF_REDIS_URL=redis://redis:6379/0        # rate limits shared by every BFF replica
+      - BFF_OUTBOX_DIR=/outbox                     # dev email backend: open the .eml files in bff/outbox
+      - BFF_INTERNAL_CALLERS=mcp=/secrets/mcp_ed25519_public.pem   # who may check access keys
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../secrets/bff_ed25519_private.pem:/secrets/bff_ed25519_private.pem:ro
+      - ../secrets/bff_data_key:/secrets/bff_data_key:ro
+      - ../secrets/mcp_ed25519_public.pem:/secrets/mcp_ed25519_public.pem:ro
+      - ../bff/outbox:/outbox
+    depends_on:
+      - backend
+      - redis
+
+  # MCP server for AI assistants (Claude Desktop/Code, ...): customers connect with a personal access key.
+  # First run: in bff/, `python -m scripts.generate_keys --name mcp`.
+  mcp:
+    build:
+      context: ../mcp-server
+      dockerfile: Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      - MCP_BFF_URL=http://bff:8080
+      - MCP_API_BASE_URL=http://backend:8000
+      - MCP_SIGNING_KEY_FILE=/secrets/mcp_ed25519_private.pem
+      - MCP_PUBLIC_URL=${MCP_PUBLIC_URL:-http://localhost:8090}
+      - MCP_ALLOWED_HOSTS=localhost:*,127.0.0.1:*,mcp:*
+    ports:
+      - "8090:8090"
+    volumes:
+      - ../secrets/mcp_ed25519_private.pem:/secrets/mcp_ed25519_private.pem:ro
+    depends_on:
+      - bff
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]   # counters only: no persistence needed
 
   scheduler:
     build:
@@ -35,6 +117,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml
     depends_on:
       - backend
     restart: unless-stopped

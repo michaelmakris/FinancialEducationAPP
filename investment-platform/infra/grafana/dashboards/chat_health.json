@@ -1,0 +1,124 @@
+{
+  "title": "AI Chat Health",
+  "uid": "chat-health",
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Interactions (24h)",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT COUNT(*) AS n FROM chat_interactions WHERE created_at > NOW() - INTERVAL '24 hours'",
+        "refId": "A"
+      }],
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 2,
+      "title": "Success rate (24h)",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT ROUND(100.0 * SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 0) AS pct FROM chat_interactions WHERE created_at > NOW() - INTERVAL '24 hours'",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "steps": [
+        { "value": null, "color": "red" }, { "value": 70, "color": "yellow" }, { "value": 95, "color": "green" }
+      ] } } },
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 3,
+      "title": "Errors (24h)",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT COUNT(*) AS n FROM chat_interactions WHERE created_at > NOW() - INTERVAL '24 hours' AND status = 'error'",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [
+        { "value": null, "color": "green" }, { "value": 1, "color": "red" }
+      ] } } },
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 4,
+      "title": "Avg latency (24h)",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT ROUND(AVG(latency_ms)) AS ms FROM chat_interactions WHERE created_at > NOW() - INTERVAL '24 hours'",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "steps": [
+        { "value": null, "color": "green" }, { "value": 5000, "color": "yellow" }, { "value": 15000, "color": "red" }
+      ] } } },
+      "options": { "colorMode": "value" }
+    },
+    {
+      "id": 5,
+      "title": "Interactions over time, by provider",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
+      "targets": [{
+        "format": "time_series",
+        "rawSql": "SELECT created_at AS \"time\", provider, 1 AS value FROM chat_interactions WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars", "fillOpacity": 60, "stacking": { "mode": "normal" } } } }
+    },
+    {
+      "id": 6,
+      "title": "Latency over time",
+      "type": "timeseries",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
+      "targets": [{
+        "format": "time_series",
+        "rawSql": "SELECT created_at AS \"time\", latency_ms FROM chat_interactions WHERE created_at > NOW() - INTERVAL '7 days' ORDER BY created_at",
+        "refId": "A"
+      }],
+      "fieldConfig": { "defaults": { "unit": "ms", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "id": 7,
+      "title": "Recent interactions",
+      "type": "table",
+      "datasource": { "type": "postgres", "uid": "neon-postgres" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 14 },
+      "targets": [{
+        "format": "table",
+        "rawSql": "SELECT created_at AS \"Time\", LEFT(user_message, 80) AS \"Question\", LEFT(assistant_reply, 120) AS \"Reply\", provider AS \"Provider\", agents_used AS \"Agents\", status AS \"Status\", ROUND(latency_ms) AS \"Latency (ms)\" FROM chat_interactions ORDER BY created_at DESC LIMIT 50",
+        "refId": "A"
+      }],
+      "fieldConfig": {
+        "overrides": [{
+          "matcher": { "id": "byName", "options": "Status" },
+          "properties": [{
+            "id": "mappings",
+            "value": [{
+              "type": "value",
+              "options": {
+                "ok": { "text": "OK", "color": "green" },
+                "error": { "text": "ERROR", "color": "red" }
+              }
+            }]
+          }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }]
+        }]
+      }
+    }
+  ]
+}
