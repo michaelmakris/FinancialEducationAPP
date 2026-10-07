@@ -23,7 +23,8 @@ def test_lists_all_tools_with_hints(mcp_app):
         async with connect(mcp_app, "fea_mcp_read_key") as c:
             return (await c.list_tools()).tools
     tools = {t.name: t for t in run(go())}
-    assert len(tools) == 12
+    assert len(tools) == 16
+    assert tools["get_risk_estimates"].annotations.read_only_hint is True
     assert tools["get_fundamentals"].annotations.read_only_hint is True
     assert tools["place_virtual_trade"].annotations.read_only_hint is False
 

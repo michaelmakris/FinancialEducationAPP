@@ -265,6 +265,15 @@ def load_fundamentals(db: Session, full: bool = False, only: list[str] | None = 
 
 
 # ---------------------------------------------------------------------------
+# Forecasting models (forecasting/): imported lazily -- forecasting imports this module
+# ---------------------------------------------------------------------------
+def run_forecasts(db: Session, full: bool = False, only: list[str] | None = None,
+                  as_of: datetime.date | None = None) -> JobResult:
+    from forecasting.jobs import run_forecasts as _run
+    return _run(db, full=full, only=only, as_of=as_of)
+
+
+# ---------------------------------------------------------------------------
 # Registry + runner
 # ---------------------------------------------------------------------------
 # cron fields are APScheduler's (Europe/Athens). Athens closes 17:20 local.
@@ -274,8 +283,10 @@ JOBS = {
     "crypto":       dict(fn=load_crypto,       cron=dict(hour="*/6", minute=5)),
     "fundamentals": dict(fn=load_fundamentals, cron=dict(day_of_week="sun", hour=6, minute=0)),
     "snapshots":    dict(fn=compute_snapshots, cron=dict(hour=7, minute=45)),
+    # after the Athens close load (18:30); retrains + re-evaluates every model, publishes approved ones
+    "forecasts":    dict(fn=run_forecasts,     cron=dict(hour=19, minute=30)),
 }
-ORDER = ["indicators", "equities", "crypto", "fundamentals", "snapshots"]
+ORDER = ["indicators", "equities", "crypto", "fundamentals", "snapshots", "forecasts"]
 
 
 def run_job(name: str, session_factory, **kwargs) -> JobResult:

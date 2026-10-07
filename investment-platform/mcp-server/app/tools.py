@@ -31,7 +31,9 @@ stocks, the Athens General index, global benchmarks, 12 major crypto assets in E
 fundamentals of Greek listed companies (ESEF/IFRS), and Greek/EU/global macro indicators, plus the
 user's own *virtual* practice portfolio (simulated prices and virtual cash: no real money moves).
 
-Ground every number in a tool result and say where it comes from. This is education, not
+Model estimates (risk, quality, market conditions) come only from models that passed out-of-sample
+validation; quote their uncertainty and never present them as certain. Ground every number in a tool
+result and say where it comes from. This is education, not
 investment advice: don't tell the user what to buy or sell; explain data, risk and trade-offs.
 Prices for Athens stocks are end-of-day; crypto updates every few hours."""
 
@@ -203,6 +205,37 @@ def build_server(http: httpx.AsyncClient, verifier: AccessKeyVerifier) -> MCPSer
                                 params={"start": start.isoformat() if start else None, "end": end.isoformat() if end else None})
         info["points"] = _thin(series["points"], 260)
         return info
+
+    # ------------------------------------------------------------ model estimates (validated models only)
+    @server.tool(annotations=READ)
+    @tracked
+    async def get_risk_estimates(ticker: str) -> dict:
+        """Model estimates for one instrument: expected 21-day volatility (annualised), probability of a fall
+        of more than 10% over the next 21 trading days, beta vs its benchmark, the company's quality score
+        within its peer group, and the 1-month direction model (reported as not served when it failed
+        validation). Each block names the model version; only validated models are served."""
+        return await api.call("GET", f"/v1/predictions/instruments/{ticker}", "market:read")
+
+    @server.tool(annotations=READ)
+    @tracked
+    async def get_market_conditions() -> dict:
+        """Athens market: measured current conditions (volatility percentile, drawdown, calm/normal/stressed)
+        and the stress-forecast model, which is reported as not served unless it beat its baseline."""
+        return await api.call("GET", "/v1/predictions/market", "market:read")
+
+    @server.tool(annotations=READ)
+    @tracked
+    async def get_quality_ranking(peer_group: Literal["banks", "non-banks"] | None = None) -> dict:
+        """Athens-listed companies ranked 0-100 by annual-report quality (profitability, margins, balance sheet,
+        growth) within their peer group. A transparent ranking, not a recommendation."""
+        return await api.call("GET", "/v1/predictions/quality", "market:read", params={"peer_group": peer_group})
+
+    @server.tool(annotations=READ)
+    @tracked
+    async def get_model_validation() -> dict:
+        """How every model was validated: out-of-sample metrics vs its baseline, approval status and reason.
+        Use this to explain how far the estimates can be trusted."""
+        return await api.call("GET", "/v1/predictions/models", "market:read")
 
     # ------------------------------------------------------------ the customer's virtual portfolio
     @server.tool(annotations=READ)

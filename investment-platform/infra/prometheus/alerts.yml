@@ -154,3 +154,26 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "{{ $value }} invalid access keys presented in 10 minutes (key guessing?)"
+
+  - name: models
+    rules:
+      - alert: RiskModelNotServed
+        expr: model_approved{model=~"volatility|conditions"} == 0
+        for: 1h
+        labels: {severity: critical}
+        annotations:
+          summary: "Model {{ $labels.model }} has no approved version: risk numbers are not being served"
+
+      - alert: ModelPredictionsStale
+        expr: model_predictions_age_days{model=~"volatility|conditions|quality"} > 4
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "Predictions of {{ $labels.model }} are {{ $value }} days old"
+
+      - alert: ModelNotRetrained
+        expr: model_trained_hours_ago > 50
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "Model {{ $labels.model }} was last trained {{ $value }} hours ago (daily job failing?)"

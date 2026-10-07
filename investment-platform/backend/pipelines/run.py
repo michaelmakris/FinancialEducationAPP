@@ -38,7 +38,7 @@ def main() -> int:
     failed = 0
     for name in names:
         kwargs = {"full": args.full, "only": args.only}
-        if name == "snapshots" and args.as_of:
+        if name in ("snapshots", "forecasts") and args.as_of:
             kwargs["as_of"] = args.as_of
         result = jobs.run_job(name, SessionLocal, **kwargs)
         failed += result.status == "error"

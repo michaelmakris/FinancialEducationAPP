@@ -18,6 +18,10 @@ the simulated dataset and are unchanged. Interactive docs: http://localhost:8000
 | `GET /v1/macro/indicators?category=&geo=` | Indicator catalog with today's snapshot (value, 90-day direction, 1y-ago, EU-27 comparator, staleness, eligibility). |
 | `GET /v1/macro/indicators/{id}` · `/series?start=&end=` | One indicator; native-frequency history (default 5 years). |
 | `GET /v1/macro/snapshot?as_of=&eligible_only=` | All snapshots for a day (default latest). `eligible_only=true` = fresh enough to quote. |
+| `GET /v1/predictions/instruments/{ticker}` | Model estimates: 21-day volatility, P(fall > 10%), beta, quality score, direction. Each block names its model version; blocks from unapproved models say `not_served` and why. |
+| `GET /v1/predictions/market` | Measured Athens market conditions (calm / normal / stressed) and the stress-forecast model, if approved. |
+| `GET /v1/predictions/quality?peer_group=banks\|non-banks` | Annual-report quality ranking 0-100. |
+| `GET /v1/predictions/models` | Every model's latest version: out-of-sample metrics vs baseline, status, reason. See `forecasting/MODEL_CARDS.md`. |
 | `GET /v1/data-status` | Freshness of every series and health of every market job. `overall`: `ok` / `degraded` / `critical`. |
 
 Errors: unknown ticker or indicator → 404; invalid input (range, interval, ticker count) → 422.

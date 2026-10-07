@@ -179,6 +179,44 @@ class MacroObservation(Base):
     vix: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+class ModelVersion(Base):
+    """Registry of every trained forecasting/scoring model (forecasting/).
+    status: approved (beats its baseline out of sample, predictions served) |
+            rejected (did not beat the baseline, predictions not served) | retired."""
+    __tablename__ = "model_versions"
+    __table_args__ = (UniqueConstraint("model_name", "version", name="uq_model_version"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    model_name: Mapped[str] = mapped_column(String(40), nullable=False, index=True)  # volatility | regime | quality | direction
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    algorithm: Mapped[str] = mapped_column(String(80), nullable=False)
+    trained_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, nullable=False, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    data_start: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    data_end: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    metrics_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")    # out-of-sample, model
+    baseline_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")   # out-of-sample, baseline
+    params_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")     # fitted parameters / config
+    status: Mapped[str] = mapped_column(String(12), nullable=False, index=True)
+    status_reason: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+
+
+class ModelPrediction(Base):
+    """One served number: e.g. target=vol_21d for subject ETE.AT as of a date."""
+    __tablename__ = "model_predictions"
+    __table_args__ = (UniqueConstraint("model_name", "subject", "target", "as_of_date", name="uq_model_prediction"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    model_version_id: Mapped[int] = mapped_column(Integer, ForeignKey("model_versions.id"), index=True, nullable=False)
+    model_name: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    subject: Mapped[str] = mapped_column(String(40), nullable=False, index=True)   # ticker, or "market:GR"
+    target: Mapped[str] = mapped_column(String(40), nullable=False)
+    as_of_date: Mapped[datetime.date] = mapped_column(Date, nullable=False, index=True)
+    horizon_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    details_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
+
 class Portfolio(Base):
     """One virtual portfolio per customer (customer_id = the `sub` of the BFF token).
     Rows created before login existed have customer_id NULL and are never served."""

@@ -34,7 +34,7 @@ STALE_AFTER_DAYS = {
     "fundamentals": 488, # ~16 months after fiscal year end: annual reports are due within 4 months
 }
 # Max hours since a job last ran successfully (ok or partial) before it counts as overdue.
-JOB_MAX_HOURS = {"indicators": 26, "snapshots": 26, "crypto": 7, "equities": 76, "fundamentals": 192}
+JOB_MAX_HOURS = {"indicators": 26, "snapshots": 26, "crypto": 7, "equities": 76, "fundamentals": 192, "forecasts": 26}
 
 
 def compute_data_status(db: Session, today: datetime.date | None = None, now: datetime.datetime | None = None) -> dict:
@@ -74,6 +74,17 @@ def compute_data_status(db: Session, today: datetime.date | None = None, now: da
             "overdue": hours is None or hours > max_h,
         })
 
+    from forecasting import registry  # local import: forecasting imports app modules
+    models = []
+    for name, mv in sorted(registry.latest_versions(db).items()):
+        trained = mv.trained_at.replace(tzinfo=None) if mv.trained_at else None
+        preds = registry.latest_predictions(db, name)
+        models.append({"model": name, "version": mv.version, "status": mv.status, "reason": mv.status_reason,
+                       "trained_hours_ago": round((datetime.datetime.utcnow() - trained).total_seconds() / 3600, 2) if trained else None,
+                       "predictions_as_of": preds[0].as_of_date if preds else None,
+                       "predictions_age_days": (today - preds[0].as_of_date).days if preds else None,
+                       "predictions": len(preds)})
+
     datasets = {}
     for name in ("equities", "crypto", "indicators", "fundamentals"):
         rows = [i for i in items if i["dataset"] == name]
@@ -84,7 +95,7 @@ def compute_data_status(db: Session, today: datetime.date | None = None, now: da
     degraded = critical or any(d["stale"] for d in datasets.values()) or any(p["overdue"] for p in pipelines)
     return {
         "generated_at": now, "overall": "critical" if critical else "degraded" if degraded else "ok",
-        "snapshot_date": snap_day, "datasets": datasets, "pipelines": pipelines, "items": items,
+        "snapshot_date": snap_day, "datasets": datasets, "pipelines": pipelines, "models": models, "items": items,
     }
 
 
@@ -160,6 +171,18 @@ class MarketDataCollector:
             for sname in ("ok", "partial", "error", "skipped"):
                 status.add_metric([p["job"], sname], float(p["last_status"] == sname))
         yield from (last_run, since_ok, overdue, status, rows)
+        approved = GaugeMetricFamily("model_approved", "1 if the latest version of the model is approved (served)", labels=["model"])
+        trained = GaugeMetricFamily("model_trained_hours_ago", "Hours since the latest version was trained", labels=["model"])
+        pred_age = GaugeMetricFamily("model_predictions_age_days", "Age of the newest served predictions", labels=["model"])
+        n_pred = GaugeMetricFamily("model_predictions", "Rows in the newest served prediction set", labels=["model"])
+        for m in st.get("models", []):
+            approved.add_metric([m["model"]], float(m["status"] == "approved"))
+            if m["trained_hours_ago"] is not None:
+                trained.add_metric([m["model"]], m["trained_hours_ago"])
+            if m["predictions_age_days"] is not None:
+                pred_age.add_metric([m["model"]], m["predictions_age_days"])
+            n_pred.add_metric([m["model"]], m["predictions"])
+        yield from (approved, trained, pred_age, n_pred)
         overall = GaugeMetricFamily("market_data_overall", "0 ok, 1 degraded, 2 critical")
         overall.add_metric([], {"ok": 0, "degraded": 1, "critical": 2}[st["overall"]])
         yield overall
