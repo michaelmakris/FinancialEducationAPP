@@ -10,7 +10,7 @@ from .config import settings
 from .db import init_db
 from . import monitoring
 from .auth import require
-from .routers import chat, compare, financials, instruments, macro, market, portfolio, predictions, scores, simulation
+from .routers import chat, compare, financials, instruments, macro, market, portfolio, predictions, proposals, scores, simulation
 
 
 @asynccontextmanager
@@ -55,6 +55,7 @@ app.include_router(chat.router)       # chat scope, checked in the route
 app.include_router(market.router, dependencies=_market)
 app.include_router(macro.router, dependencies=_market)
 app.include_router(predictions.router, dependencies=_market)
+app.include_router(proposals.router)   # per-route: market:read / portfolio:read / portfolio:write
 app.include_router(monitoring.router, dependencies=[Depends(require("ops:read"))])
 
 

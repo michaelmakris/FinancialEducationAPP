@@ -27,6 +27,7 @@ AI client ──Bearer fea_mcp_…──► MCP server :8090 ──60 s token (i
 | `list_macro_indicators`, `get_macro_indicator` | read | Greek/EU/global indicators with snapshot (90-day direction, 1y ago, EU-27) and history |
 | `get_risk_estimates`, `get_market_conditions`, `get_quality_ranking`, `get_model_validation` | read | Validated model outputs (volatility, P(fall > 10%), beta, quality score, market conditions) and how each model was validated |
 | `get_portfolio`, `get_watchlist` | read | The customer's virtual practice portfolio |
+| `get_my_risk_profile`, `get_my_proposal` | read | The customer's risk profile and latest educational proposal (generated in the app) |
 | `place_virtual_trade`, `update_watchlist` | trade | Virtual trades and watchlist edits (no real money) |
 
 The server instructions tell the model to ground numbers in tool results and not to give investment advice.

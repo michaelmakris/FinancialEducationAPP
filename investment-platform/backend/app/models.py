@@ -217,6 +217,36 @@ class ModelPrediction(Base):
     details_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
 
 
+class RiskAssessment(Base):
+    """One completed risk questionnaire (append-only: the latest one is used, all are kept)."""
+    __tablename__ = "risk_assessments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    questionnaire_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    answers_json: Mapped[str] = mapped_column(Text, nullable=False)
+    result_json: Mapped[str] = mapped_column(Text, nullable=False)
+    profile: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), nullable=False, index=True)
+
+
+class Proposal(Base):
+    """A generated educational proposal, stored with everything it was built from
+    (assessment, model versions, data dates) so it can be explained and audited later."""
+    __tablename__ = "proposals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    customer_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    risk_assessment_id: Mapped[int] = mapped_column(Integer, ForeignKey("risk_assessments.id"), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), nullable=False, index=True)
+    engine_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    proposal_json: Mapped[str] = mapped_column(Text, nullable=False)
+    narrative: Mapped[str] = mapped_column(Text, nullable=False)
+    narrative_source: Mapped[str] = mapped_column(String(200), nullable=False)
+
+
 class Portfolio(Base):
     """One virtual portfolio per customer (customer_id = the `sub` of the BFF token).
     Rows created before login existed have customer_id NULL and are never served."""

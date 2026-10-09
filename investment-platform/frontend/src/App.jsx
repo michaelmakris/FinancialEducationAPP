@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { api } from "./auth/bff.js";
 import { AccountMenu } from "./auth/AuthGate.jsx";
+import PlanPage from "./plan/PlanPage.jsx";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, Radar, ComposedChart, Area,
@@ -10,7 +11,7 @@ import {
   Home, Search, LineChart as LineChartIcon, Columns3, SlidersHorizontal,
   Briefcase, MessageSquare, Send, Plus, X, Info, AlertTriangle, Loader2,
   ChevronRight, Star, Trash2, RefreshCw, Bot, User,
-  Images, GraduationCap, Heart, Bookmark, Share2,
+  Images, GraduationCap, Heart, Bookmark, Share2, Compass,
 } from "lucide-react";
 
 /* ============================================================================
@@ -2209,6 +2210,7 @@ const NAV_TABS = [
   ["compare", "Compare", Columns3],
   ["simulator", "Simulator", SlidersHorizontal],
   ["portfolio", "Portfolio", Briefcase],
+  ["plan", "My plan", Compass],
   ["learn", "Learn", GraduationCap],
 ];
 
@@ -2292,6 +2294,8 @@ export default function App() {
     content = <SimulatorPage dataset={DATASET} />;
   } else if (page === "portfolio") {
     content = <PortfolioPage portfolio={portfolio} universeMetrics={universeMetrics} onBuy={handleBuy} onSell={handleSell} onReset={handleReset} goTo={goTo} />;
+  } else if (page === "plan") {
+    content = <PlanPage />;
   } else if (page === "learn") {
     content = <LearnPage />;
   }

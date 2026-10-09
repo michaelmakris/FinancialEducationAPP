@@ -251,6 +251,22 @@ def build_server(http: httpx.AsyncClient, verifier: AccessKeyVerifier) -> MCPSer
         """Tickers on the user's watchlist."""
         return await api.call("GET", "/portfolio/watchlist", "portfolio:read")
 
+    @server.tool(annotations=READ)
+    @tracked
+    async def get_my_risk_profile() -> dict:
+        """The user's risk profile (1 very conservative .. 7 very adventurous) from the app's questionnaire,
+        with why it came out that way. Not found if they have not answered it in the app yet."""
+        return await api.call("GET", "/v1/profile", "portfolio:read")
+
+    @server.tool(annotations=READ)
+    @tracked
+    async def get_my_proposal() -> dict:
+        """The user's latest educational proposal for their practice portfolio: illustrative mix by asset class,
+        expected volatility, stress tests (incl. a replay of the 2020 crash), how their current practice portfolio
+        compares, macro context and example instruments to research. Explain it; never present it as advice.
+        Proposals are generated in the app (My plan)."""
+        return await api.call("GET", "/v1/proposals/latest", "portfolio:read")
+
     @server.tool(annotations=WRITE)
     @tracked
     async def place_virtual_trade(side: Literal["buy", "sell"], ticker: str, quantity: float) -> dict:

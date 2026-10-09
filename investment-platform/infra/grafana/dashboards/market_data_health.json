@@ -1332,6 +1332,112 @@
         },
         "overrides": []
       }
+    },
+    {
+      "type": "row",
+      "title": "Proposals",
+      "id": 26,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 75
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Proposals generated / hour, by explanation",
+      "description": "template = generated from the numbers; ai = AI wording accepted; ai_rejected = AI wording failed the fact/advice check",
+      "id": 27,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "api-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 76
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "api-prometheus"
+          },
+          "legendFormat": "{{narrative}}",
+          "expr": "sum by (narrative) (increase(proposals_generated_total[1h]))"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 5,
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "title": "Latest proposals (no personal data)",
+      "description": "",
+      "id": 28,
+      "datasource": {
+        "type": "postgres",
+        "uid": "neon-postgres"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 76
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "neon-postgres"
+          },
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT p.created_at AS \"Created\", r.profile AS \"Profile\", p.engine_version AS \"Engine\",\n  p.narrative_source AS \"Explanation\"\nFROM proposals p JOIN risk_assessments r ON r.id = p.risk_assessment_id ORDER BY p.created_at DESC LIMIT 20"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": []
+      }
     }
   ]
 }

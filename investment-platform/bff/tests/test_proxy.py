@@ -110,3 +110,21 @@ def test_token_rejection_is_counted_separately(client, api):
     api.status = 401
     client.get("/bff/api/v1/instruments")
     assert 'bff_upstream_requests_total{route="v1/instruments",status="token_rejected"}' in client.get("/metrics").text
+
+
+@pytest.mark.parametrize("method,path", [
+    ("GET", "v1/predictions/instruments/ETE.AT"), ("GET", "v1/predictions/market"), ("GET", "v1/predictions/quality"),
+    ("GET", "v1/predictions/models"), ("GET", "v1/profile/questionnaire"), ("GET", "v1/profile"), ("POST", "v1/profile"),
+    ("POST", "v1/proposals"), ("GET", "v1/proposals"), ("GET", "v1/proposals/latest"), ("GET", "v1/proposals/12"),
+])
+def test_planning_routes_are_proxied(client, api, method, path):
+    signup(client)
+    r = client.request(method, f"/bff/api/{path}", json={} if method == "POST" else None,
+                       headers=csrf(client) if method == "POST" else None)
+    assert r.status_code == 200 and api.calls[-1].url.path == f"/{path}"
+
+
+@pytest.mark.parametrize("path", ["v1/proposals/abc", "v1/predictions/instruments", "v1/profile/other"])
+def test_planning_route_variants_not_on_the_list_are_refused(client, api, path):
+    signup(client)
+    assert client.get(f"/bff/api/{path}").status_code == 404 and api.calls == []

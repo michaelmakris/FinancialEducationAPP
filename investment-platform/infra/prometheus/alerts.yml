@@ -177,3 +177,21 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Model {{ $labels.model }} was last trained {{ $value }} hours ago (daily job failing?)"
+
+  - name: proposals
+    rules:
+      - alert: ProposalAiNarrativeRejected
+        expr: |
+          sum(increase(proposals_generated_total{narrative="ai_rejected"}[1h]))
+            / clamp_min(sum(increase(proposals_generated_total{narrative=~"ai|ai_rejected"}[1h])), 1) > 0.3
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "More than 30% of AI-worded proposal explanations failed the fact/advice check (template served instead)"
+
+      - alert: ProposalsFailing
+        expr: sum(increase(http_requests_total{handler="/v1/proposals", method="POST", status="5xx"}[15m])) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Generating proposals fails (risk estimates missing or engine error)"

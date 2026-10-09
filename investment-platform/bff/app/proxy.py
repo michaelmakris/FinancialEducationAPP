@@ -35,6 +35,9 @@ _CUSTOMER_ROUTES = [
     r"instruments", r"scores(/[^/]+)?", r"financials(/[^/]+)?", r"compare", r"simulate",
     r"portfolio(/(buy|sell|reset|watchlist(/[^/]+)?))?",
     r"chat",
+    r"v1/predictions/(instruments/[^/]+|market|quality|models)",
+    r"v1/profile(/questionnaire)?",
+    r"v1/proposals(/(latest|[0-9]+))?",
 ]
 ROLE_ROUTES = {
     "customer": [re.compile(f"^{p}$") for p in _CUSTOMER_ROUTES],
