@@ -22,7 +22,7 @@ services:
       - API_AUTH_MODE=required
       - API_TRUSTED_ISSUERS=bff=/secrets/bff_ed25519_public.pem,mcp=/secrets/mcp_ed25519_public.pem
     ports:
-      - "8000:8000"   # for local debugging only; nothing is served without a BFF-signed token
+      - "127.0.0.1:8000:8000"   # this PC only, for debugging; nothing is served without a signed token
     volumes:
       - ../backend:/app
       - ../secrets/bff_ed25519_public.pem:/secrets/bff_ed25519_public.pem:ro
@@ -31,13 +31,21 @@ services:
       sh -c "alembic upgrade head &&
              python -m scripts.seed_demo_data &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    # Startup (migrations + seed check against Neon) takes ~30-60 s; the BFF and MCP wait for this.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 5s
+      timeout: 6s
+      retries: 5
+      start_period: 120s
 
   frontend:
     build:
       context: ../frontend
       dockerfile: Dockerfile
     ports:
-      - "5173:5173"
+      # the web app: this PC only by default; APP_BIND=<your Wi-Fi IP> to open it to the home network
+      - "${APP_BIND:-127.0.0.1}:5173:5173"
     volumes:
       - ../frontend:/app
       - /app/node_modules
@@ -60,20 +68,25 @@ services:
       - BFF_SIGNING_KEY_FILE=/secrets/bff_ed25519_private.pem
       # Browsers send Secure cookies to http://localhost only; set true behind HTTPS.
       - BFF_COOKIE_SECURE=${BFF_COOKIE_SECURE:-false}
+      # where people open the app (links in emails, allowed sign-in origin); set APP_PUBLIC_URL for the phone
+      - BFF_PUBLIC_URL=${APP_PUBLIC_URL:-http://localhost:5173}
+      - BFF_ALLOWED_ORIGINS=${APP_PUBLIC_URL:-http://localhost:5173},http://localhost:5173,http://127.0.0.1:5173
       - BFF_DATA_KEY_FILE=/secrets/bff_data_key
       - BFF_REDIS_URL=redis://redis:6379/0        # rate limits shared by every BFF replica
       - BFF_OUTBOX_DIR=/outbox                     # dev email backend: open the .eml files in bff/outbox
       - BFF_INTERNAL_CALLERS=mcp=/secrets/mcp_ed25519_public.pem   # who may check access keys
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ../secrets/bff_ed25519_private.pem:/secrets/bff_ed25519_private.pem:ro
       - ../secrets/bff_data_key:/secrets/bff_data_key:ro
       - ../secrets/mcp_ed25519_public.pem:/secrets/mcp_ed25519_public.pem:ro
       - ../bff/outbox:/outbox
     depends_on:
-      - backend
-      - redis
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   # MCP server for AI assistants (Claude Desktop/Code, ...): customers connect with a personal access key.
   # First run: in bff/, `python -m scripts.generate_keys --name mcp`.
@@ -90,12 +103,14 @@ services:
       - MCP_PUBLIC_URL=${MCP_PUBLIC_URL:-http://localhost:8090}
       - MCP_ALLOWED_HOSTS=localhost:*,127.0.0.1:*,mcp:*
     ports:
-      - "8090:8090"
+      - "127.0.0.1:8090:8090"
     volumes:
       - ../secrets/mcp_ed25519_private.pem:/secrets/mcp_ed25519_private.pem:ro
     depends_on:
-      - bff
-      - backend
+      bff:
+        condition: service_started
+      backend:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
@@ -114,7 +129,7 @@ services:
   prometheus:
     image: prom/prometheus:latest
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml
@@ -130,7 +145,7 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"   # Grafana: change GRAFANA_ADMIN_PASSWORD from the default
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards

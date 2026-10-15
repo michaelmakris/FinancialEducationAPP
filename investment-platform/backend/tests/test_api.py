@@ -50,29 +50,25 @@ def test_compare_two_tickers(client):
     assert "AAPL" in body and "MSFT" in body
 
 
-def test_portfolio_lifecycle_buy_sell_reset(client):
+def test_portfolio_lifecycle_buy_sell_reset(client, practice_market):
     r = client.post("/portfolio/reset")
     assert r.status_code == 200
     start = r.json()
-    assert start["cash"] == start["starting_cash"]
+    assert start["cash"] == start["starting_cash"] == 10000
     assert start["positions"] == []
 
-    r = client.get("/instruments")
-    price = next(i["price"] for i in r.json() if i["ticker"] == "AAPL")
-
-    r = client.post("/portfolio/buy", json={"ticker": "AAPL", "qty": 5})
+    r = client.post("/portfolio/buy", json={"ticker": "TESTA.AT", "qty": 5})
     assert r.status_code == 200
     body = r.json()
     assert len(body["positions"]) == 1
     assert body["positions"][0]["qty"] == 5
-    assert body["cash"] == pytest.approx(start["cash"] - 5 * price, rel=1e-6)
+    assert body["cash"] == pytest.approx(start["cash"] - 5 * 10.0)
 
-    r = client.post("/portfolio/sell", json={"ticker": "AAPL", "qty": 2})
+    r = client.post("/portfolio/sell", json={"ticker": "TESTA.AT", "qty": 2})
     assert r.status_code == 200
-    body = r.json()
-    assert body["positions"][0]["qty"] == 3
+    assert r.json()["positions"][0]["qty"] == 3
 
-    r = client.post("/portfolio/sell", json={"ticker": "AAPL", "qty": 100})
+    r = client.post("/portfolio/sell", json={"ticker": "TESTA.AT", "qty": 100})
     assert r.status_code == 400
 
     r = client.post("/portfolio/reset")

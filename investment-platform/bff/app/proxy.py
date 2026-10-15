@@ -29,15 +29,17 @@ UPSTREAM_LATENCY = Histogram("bff_upstream_latency_seconds", "API latency seen b
 DENIED = Counter("bff_proxy_denied_total", "Proxy calls refused before reaching the API", ["reason"])
 
 _CUSTOMER_ROUTES = [
-    r"v1/instruments(/[^/]+(/(prices|performance|fundamentals))?)?",
-    r"v1/compare", r"v1/crypto/market",
+    r"v1/instruments(/[^/]+(/(prices|performance|fundamentals|intraday))?)?",
+    r"v1/markets", r"v1/compare", r"v1/crypto/market",
     r"v1/macro/(indicators(/[^/]+(/series)?)?|snapshot)",
     r"instruments", r"scores(/[^/]+)?", r"financials(/[^/]+)?", r"compare", r"simulate",
-    r"portfolio(/(buy|sell|reset|watchlist(/[^/]+)?))?",
+    r"portfolio(/(buy|sell|reset|intraday|transactions|costs|cost-profile|watchlist(/[^/]+)?))?",
     r"chat",
     r"v1/predictions/(instruments/[^/]+|market|quality|models)",
     r"v1/profile(/questionnaire)?",
     r"v1/proposals(/(latest|[0-9]+))?",
+    r"v1/llm/providers",
+    r"v1/coach/(pre-trade|events|tip|learn/[a-z]+|lessons/[a-z_]+)",
 ]
 ROLE_ROUTES = {
     "customer": [re.compile(f"^{p}$") for p in _CUSTOMER_ROUTES],

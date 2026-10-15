@@ -50,6 +50,143 @@ GREEK_EQUITIES = [
     ("INTRK.AT",    "Intracom Holdings",                     "Technology",        None),
 ]
 
+# The rest of the Euronext Athens main market (prices only, no ESEF link yet).
+# Every symbol was checked against Yahoo on 2026-10-10 (traded in the last 10 days).
+ATHENS_MORE = [
+    ("AAAK.AT", "Wool Industry Tria Alfa", "Consumer Goods"), ("AEM.AT", "Alter Ego Media", "Media"),
+    ("ALMY.AT", "Alumil", "Basic Materials"), ("ANDRO.AT", "Alpha Trust Andromeda", "Financial Services"),
+    ("ASCO.AT", "AS Company", "Retail"), ("ASTAK.AT", "Alpha Real Estate Services", "Real Estate"),
+    ("ATEK.AT", "Attica Publications", "Media"), ("AVE.AT", "AVE", "Media"),
+    ("BIOKA.AT", "Biokarpet", "Industrials"), ("BLEKEDROS.AT", "Ble Kedros REIC", "Real Estate"),
+    ("BRIQ.AT", "BriQ Properties", "Real Estate"), ("CENTR.AT", "Centric Holdings", "Travel & Leisure"),
+    ("CNLCAP.AT", "CNL Capital", "Financial Services"), ("CPI.AT", "CPI Computer Peripherals", "Technology"),
+    ("DAIOS.AT", "Daios Plastics", "Industrials"), ("DIMAND.AT", "Dimand", "Real Estate"),
+    ("DOMIK.AT", "Domiki Kritis", "Construction"), ("DROME.AT", "Dromeas", "Consumer Goods"),
+    ("EEE.AT", "Coca-Cola HBC", "Food & Beverage"), ("EIS.AT", "European Innovation Solutions", "Technology"),
+    ("EKTER.AT", "Ekter", "Construction"), ("ELBE.AT", "Elve", "Consumer Goods"),
+    ("ELIN.AT", "Elinoil", "Energy"), ("ELSTR.AT", "Elastron", "Basic Materials"),
+    ("ELTON.AT", "Elton International Trading", "Basic Materials"), ("EVR.AT", "Evropi Holdings", "Financial Services"),
+    ("EVROF.AT", "Evrofarma", "Food & Beverage"), ("EYAPS.AT", "Thessaloniki Water Supply & Sewerage", "Utilities"),
+    ("FLEXO.AT", "Flexopack", "Industrials"), ("FRIGO.AT", "Frigoglass", "Industrials"),
+    ("GEBKA.AT", "General Commercial & Industrial", "Industrials"), ("HAIDE.AT", "Haidemenos", "Industrials"),
+    ("IATR.AT", "Athens Medical", "Health Care"), ("IKTIN.AT", "Iktinos Hellas", "Construction Materials"),
+    ("ILYDA.AT", "Ilyda", "Technology"), ("INTEK.AT", "Ideal Holdings", "Industrials"),
+    ("INTET.AT", "Intertech", "Technology"), ("KARE.AT", "Karelia Tobacco", "Food & Beverage"),
+    ("KEKR.AT", "Kekrops", "Real Estate"), ("LANAC.AT", "Lanakam", "Consumer Goods"),
+    ("LAVI.AT", "Lavipharm", "Health Care"), ("LOGISMOS.AT", "Logismos Information Systems", "Technology"),
+    ("MATHIO.AT", "Mathios Refractories", "Construction Materials"), ("MEDIC.AT", "Medicon Hellas", "Health Care"),
+    ("MERKO.AT", "Mermeren Kombinat", "Construction Materials"), ("MEVA.AT", "Mevaco", "Industrials"),
+    ("MIG.AT", "MIG Holdings", "Financial Services"), ("MOTO.AT", "Motodynamics", "Retail"),
+    ("NAKAS.AT", "Philippos Nakas", "Retail"), ("NOVAL.AT", "Noval Property", "Real Estate"),
+    ("OLTH.AT", "Thessaloniki Port Authority", "Transportation"), ("OLYMP.AT", "Technical Olympic", "Construction"),
+    ("ORILINA.AT", "Orilina Properties", "Real Estate"), ("OTOEL.AT", "Autohellas", "Transportation"),
+    ("PAIR.AT", "E. Pairis", "Industrials"), ("PAP.AT", "Papoutsanis", "Personal Care"),
+    ("PERF.AT", "Performance Technologies", "Technology"), ("PETRO.AT", "Petros Petropoulos", "Industrials"),
+    ("PLAKR.AT", "Plastika Kritis", "Industrials"), ("PLAT.AT", "Thrace Plastics", "Industrials"),
+    ("PPA.AT", "Piraeus Port Authority", "Transportation"), ("PREMIA.AT", "Premia Properties", "Real Estate"),
+    ("QLCO.AT", "Qualco Group", "Technology"), ("REALCONS.AT", "Real Consulting", "Technology"),
+    ("SIDMA.AT", "Sidma Steel", "Basic Materials"), ("SPACE.AT", "Space Hellas", "Technology"),
+    ("SPIR.AT", "Spiroy Agricultural House", "Basic Materials"), ("TELL.AT", "Bank of Greece", "Banks"),
+    ("TRASTOR.AT", "Trastor REIC", "Real Estate"), ("TRESTATES.AT", "Trade Estates REIC", "Real Estate"),
+    ("VOSYS.AT", "Vogiatzoglou Systems", "Industrials"), ("XYLEK.AT", "Interwood-Xylemporia", "Basic Materials"),
+]
+
+# EURO STOXX 50 members and a few other euro-area large caps (EUR).
+EUROPE_EQUITIES = [
+    ("ADS.DE", "adidas", "Consumer Goods"), ("ADYEN.AS", "Adyen", "Financial Services"),
+    ("AD.AS", "Ahold Delhaize", "Retail"), ("AI.PA", "Air Liquide", "Basic Materials"),
+    ("AIR.PA", "Airbus", "Industrials"), ("ALV.DE", "Allianz", "Insurance"),
+    ("ABI.BR", "Anheuser-Busch InBev", "Food & Beverage"), ("ARGX.BR", "argenx", "Health Care"),
+    ("ASML.AS", "ASML Holding", "Technology"), ("CS.PA", "AXA", "Insurance"),
+    ("BBVA.MC", "BBVA", "Banks"), ("SAN.MC", "Banco Santander", "Banks"),
+    ("BAS.DE", "BASF", "Basic Materials"), ("BAYN.DE", "Bayer", "Health Care"),
+    ("BMW.DE", "BMW", "Automobiles"), ("BNP.PA", "BNP Paribas", "Banks"),
+    ("DB1.DE", "Deutsche Boerse", "Financial Services"), ("DHL.DE", "DHL Group", "Transportation"),
+    ("DTE.DE", "Deutsche Telekom", "Telecommunications"), ("ENEL.MI", "Enel", "Utilities"),
+    ("ENI.MI", "Eni", "Energy"), ("EL.PA", "EssilorLuxottica", "Health Care"),
+    ("RACE.MI", "Ferrari", "Automobiles"), ("RMS.PA", "Hermes International", "Consumer Goods"),
+    ("IBE.MC", "Iberdrola", "Utilities"), ("ITX.MC", "Inditex", "Retail"),
+    ("IFX.DE", "Infineon Technologies", "Technology"), ("INGA.AS", "ING Groep", "Banks"),
+    ("ISP.MI", "Intesa Sanpaolo", "Banks"), ("KER.PA", "Kering", "Consumer Goods"),
+    ("OR.PA", "L'Oreal", "Personal Care"), ("MC.PA", "LVMH", "Consumer Goods"),
+    ("MBG.DE", "Mercedes-Benz Group", "Automobiles"), ("MUV2.DE", "Munich Re", "Insurance"),
+    ("PRX.AS", "Prosus", "Technology"), ("SAF.PA", "Safran", "Industrials"),
+    ("SAN.PA", "Sanofi", "Health Care"), ("SAP.DE", "SAP", "Technology"),
+    ("SU.PA", "Schneider Electric", "Industrials"), ("SIE.DE", "Siemens", "Industrials"),
+    ("ENR.DE", "Siemens Energy", "Industrials"), ("STLAM.MI", "Stellantis", "Automobiles"),
+    ("TTE.PA", "TotalEnergies", "Energy"), ("UCG.MI", "UniCredit", "Banks"),
+    ("DG.PA", "Vinci", "Construction"), ("VOW3.DE", "Volkswagen (pref.)", "Automobiles"),
+    ("WKL.AS", "Wolters Kluwer", "Media"), ("NDA-FI.HE", "Nordea Bank", "Banks"),
+    ("RHM.DE", "Rheinmetall", "Industrials"), ("BN.PA", "Danone", "Food & Beverage"),
+    ("SGO.PA", "Saint-Gobain", "Construction Materials"), ("KNEBV.HE", "KONE", "Industrials"),
+    ("NOKIA.HE", "Nokia", "Technology"),
+]
+
+# US large caps (USD). Our ticker adds ".US" so it never collides with the
+# simulated demo tickers (AAPL, MSFT, ...); Yahoo's symbol is the bare one.
+US_EQUITIES = [
+    # yahoo symbol, name, sector, exchange
+    ("AAPL", "Apple", "Technology", "NASDAQ"), ("MSFT", "Microsoft", "Technology", "NASDAQ"),
+    ("NVDA", "NVIDIA", "Technology", "NASDAQ"), ("AMZN", "Amazon", "Retail", "NASDAQ"),
+    ("GOOGL", "Alphabet (Class A)", "Technology", "NASDAQ"), ("META", "Meta Platforms", "Technology", "NASDAQ"),
+    ("TSLA", "Tesla", "Automobiles", "NASDAQ"), ("BRK-B", "Berkshire Hathaway (Class B)", "Financial Services", "NYSE"),
+    ("JPM", "JPMorgan Chase", "Banks", "NYSE"), ("V", "Visa", "Financial Services", "NYSE"),
+    ("MA", "Mastercard", "Financial Services", "NYSE"), ("UNH", "UnitedHealth Group", "Health Care", "NYSE"),
+    ("XOM", "ExxonMobil", "Energy", "NYSE"), ("JNJ", "Johnson & Johnson", "Health Care", "NYSE"),
+    ("PG", "Procter & Gamble", "Personal Care", "NYSE"), ("HD", "Home Depot", "Retail", "NYSE"),
+    ("COST", "Costco", "Retail", "NASDAQ"), ("ABBV", "AbbVie", "Health Care", "NYSE"),
+    ("LLY", "Eli Lilly", "Health Care", "NYSE"), ("MRK", "Merck & Co.", "Health Care", "NYSE"),
+    ("KO", "Coca-Cola", "Food & Beverage", "NYSE"), ("PEP", "PepsiCo", "Food & Beverage", "NASDAQ"),
+    ("AVGO", "Broadcom", "Technology", "NASDAQ"), ("ORCL", "Oracle", "Technology", "NYSE"),
+    ("CRM", "Salesforce", "Technology", "NYSE"), ("ADBE", "Adobe", "Technology", "NASDAQ"),
+    ("NFLX", "Netflix", "Media", "NASDAQ"), ("AMD", "Advanced Micro Devices", "Technology", "NASDAQ"),
+    ("INTC", "Intel", "Technology", "NASDAQ"), ("CSCO", "Cisco Systems", "Technology", "NASDAQ"),
+    ("WMT", "Walmart", "Retail", "NASDAQ"), ("BAC", "Bank of America", "Banks", "NYSE"),
+    ("WFC", "Wells Fargo", "Banks", "NYSE"), ("GS", "Goldman Sachs", "Financial Services", "NYSE"),
+    ("MS", "Morgan Stanley", "Financial Services", "NYSE"), ("DIS", "Walt Disney", "Media", "NYSE"),
+    ("MCD", "McDonald's", "Travel & Leisure", "NYSE"), ("NKE", "Nike", "Consumer Goods", "NYSE"),
+    ("PFE", "Pfizer", "Health Care", "NYSE"), ("TMO", "Thermo Fisher Scientific", "Health Care", "NYSE"),
+    ("ABT", "Abbott Laboratories", "Health Care", "NYSE"), ("CVX", "Chevron", "Energy", "NYSE"),
+    ("T", "AT&T", "Telecommunications", "NYSE"), ("VZ", "Verizon", "Telecommunications", "NYSE"),
+    ("IBM", "IBM", "Technology", "NYSE"), ("QCOM", "Qualcomm", "Technology", "NASDAQ"),
+    ("TXN", "Texas Instruments", "Technology", "NASDAQ"), ("CAT", "Caterpillar", "Industrials", "NYSE"),
+    ("BA", "Boeing", "Industrials", "NYSE"), ("GE", "GE Aerospace", "Industrials", "NYSE"),
+    ("HON", "Honeywell", "Industrials", "NASDAQ"), ("UPS", "United Parcel Service", "Transportation", "NYSE"),
+    ("LMT", "Lockheed Martin", "Industrials", "NYSE"), ("AMGN", "Amgen", "Health Care", "NASDAQ"),
+    ("SBUX", "Starbucks", "Travel & Leisure", "NASDAQ"), ("PYPL", "PayPal", "Financial Services", "NASDAQ"),
+    ("UBER", "Uber Technologies", "Transportation", "NYSE"), ("PLTR", "Palantir Technologies", "Technology", "NASDAQ"),
+    ("BLK", "BlackRock", "Financial Services", "NYSE"),
+]
+
+# Broad UCITS ETFs / ETCs traded in EUR on European exchanges.
+ETFS = [
+    ("IWDA.AS", "iShares Core MSCI World", "Global Equity"), ("VWCE.DE", "Vanguard FTSE All-World", "Global Equity"),
+    ("SXR8.DE", "iShares Core S&P 500", "US Equity"), ("VUSA.AS", "Vanguard S&P 500", "US Equity"),
+    ("EQQQ.DE", "Invesco NASDAQ-100", "US Equity"), ("MEUD.PA", "Amundi Core STOXX Europe 600", "European Equity"),
+    ("EXSA.DE", "iShares STOXX Europe 600", "European Equity"), ("VEUR.AS", "Vanguard FTSE Developed Europe", "European Equity"),
+    ("EXS1.DE", "iShares Core DAX", "European Equity"), ("IS3N.DE", "iShares Core MSCI EM IMI", "Emerging Markets"),
+    ("IUSN.DE", "iShares MSCI World Small Cap", "Global Equity"), ("XDWT.DE", "Xtrackers MSCI World IT", "Sector Equity"),
+    ("IEAG.AS", "iShares Euro Aggregate Bond ESG", "Bonds"), ("IBGS.AS", "iShares Euro Govt Bond 1-3yr", "Bonds"),
+    ("4GLD.DE", "Xetra-Gold", "Commodities"),
+]
+
+# What a customer can pick in the app. "index" (benchmarks) is shown but not tradable.
+MARKETS = {
+    "athens": {"label": "Athens", "currency": "EUR", "tradable": True},
+    "europe": {"label": "Europe", "currency": "EUR", "tradable": True},
+    "us": {"label": "US", "currency": "USD", "tradable": True},
+    "etf": {"label": "ETFs", "currency": "EUR", "tradable": True},
+    "crypto": {"label": "Crypto", "currency": "EUR", "tradable": True},
+    "index": {"label": "Indices", "currency": "", "tradable": False},
+}
+
+# Yahoo suffix -> (exchange, country)
+EXCHANGES = {
+    ".AT": ("Euronext Athens", "GR"), ".DE": ("XETRA", "DE"), ".AS": ("Euronext Amsterdam", "NL"),
+    ".PA": ("Euronext Paris", "FR"), ".MI": ("Borsa Italiana", "IT"), ".MC": ("Bolsa de Madrid", "ES"),
+    ".BR": ("Euronext Brussels", "BE"), ".HE": ("Nasdaq Helsinki", "FI"),
+}
+
 # Indices / benchmarks loaded alongside (asset_type="index" / "etf").
 BENCHMARKS = [
     ("GD.AT",     "Athens General Composite Index", "Index", "index", "GR", "EUR"),

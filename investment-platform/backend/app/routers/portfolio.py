@@ -1,112 +1,83 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models, repo, schemas
 from ..auth import Principal, require
 from ..db import get_db
-from ..services.factors import build_universe_metrics
+from ..services import costs, practice
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
 
-def _portfolio_out(db: Session, portfolio: models.Portfolio) -> schemas.PortfolioOut:
-    instruments = repo.load_instruments(db)
-    universe = build_universe_metrics(instruments)
-    positions_out = []
-    holdings_value = 0.0
-    for p in portfolio.positions:
-        if p.qty <= 0:
-            continue
-        price = universe[p.ticker]["price"] if p.ticker in universe else 0.0
-        value = p.qty * price
-        holdings_value += value
-        avg_cost = p.cost_basis / p.qty if p.qty else 0.0
-        positions_out.append(schemas.PositionOut(
-            ticker=p.ticker, qty=p.qty, avg_cost=avg_cost, price=price, value=value,
-            unrealized_pnl_pct=(value / p.cost_basis - 1) if p.cost_basis > 0 else 0.0,
-        ))
-    total_value = portfolio.cash + holdings_value
-    return schemas.PortfolioOut(
-        cash=portfolio.cash, starting_cash=portfolio.starting_cash, total_value=total_value,
-        total_pnl_pct=(total_value / portfolio.starting_cash - 1) if portfolio.starting_cash > 0 else 0.0,
-        positions=positions_out,
-    )
-
-
 @router.get("", response_model=schemas.PortfolioOut)
 def get_portfolio(db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:read"))):
+    """Cash, positions at live prices (EUR), total and today's change."""
     portfolio = repo.get_or_create_portfolio(db, principal.subject)
-    return _portfolio_out(db, portfolio)
+    return practice.summary(db, portfolio)
+
+
+@router.get("/intraday", response_model=schemas.PortfolioIntradayOut)
+def get_intraday(db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:read"))):
+    """Portfolio value through today (Athens time), replaying today's trades over 5-minute prices."""
+    portfolio = repo.get_or_create_portfolio(db, principal.subject)
+    return practice.intraday(db, portfolio)
+
+
+@router.get("/transactions", response_model=list[schemas.TransactionOut])
+def get_transactions(limit: int = Query(100, ge=1, le=500), db: Session = Depends(get_db),
+                     principal: Principal = Depends(require("portfolio:read"))):
+    portfolio = repo.get_or_create_portfolio(db, principal.subject)
+    return practice.transactions(db, portfolio, limit)
+
+
+@router.get("/costs")
+def get_costs(ticker: str, qty: float = Query(..., gt=0), db: Session = Depends(get_db),
+              principal: Principal = Depends(require("portfolio:read"))):
+    """What a trade would cost now (illustrative): with your broker profile, and the low/typical/high range."""
+    portfolio = repo.get_or_create_portfolio(db, principal.subject)
+    out = practice.trade_costs(db, portfolio, ticker, qty)
+    out["profiles"] = costs.PROFILES
+    return out
+
+
+class CostProfileIn(BaseModel):
+    profile: str
+
+
+@router.post("/cost-profile", response_model=schemas.PortfolioOut)
+def post_cost_profile(body: CostProfileIn, db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:write"))):
+    """Choose the broker cost profile used for your next trades: none | low | typical | high."""
+    portfolio = repo.get_or_create_portfolio(db, principal.subject)
+    practice.set_cost_profile(db, portfolio, body.profile)
+    return practice.summary(db, portfolio)
 
 
 @router.post("/buy", response_model=schemas.PortfolioOut)
 def buy(payload: schemas.TradeRequest, db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:write"))):
-    ticker = payload.ticker.upper()
+    """Buy at the latest price; the cost in EUR leaves virtual cash."""
     portfolio = repo.get_or_create_portfolio(db, principal.subject)
-    instruments = repo.load_instruments(db)
-    universe = build_universe_metrics(instruments)
-    if ticker not in universe:
-        raise HTTPException(status_code=404, detail=f"Unknown ticker '{ticker}'")
-    price = universe[ticker]["price"]
-    cost = payload.qty * price
-    if cost > portfolio.cash:
-        raise HTTPException(status_code=400, detail="Insufficient virtual cash for this buy")
-
-    position = db.execute(
-        select(models.Position).where(models.Position.portfolio_id == portfolio.id, models.Position.ticker == ticker)
-    ).scalar_one_or_none()
-    if position is None:
-        position = models.Position(portfolio_id=portfolio.id, ticker=ticker, qty=0.0, cost_basis=0.0)
-        db.add(position)
-    position.qty += payload.qty
-    position.cost_basis += cost
-    portfolio.cash -= cost
-    db.add(models.Transaction(portfolio_id=portfolio.id, ticker=ticker, side="buy", qty=payload.qty, price=price))
-    db.commit()
-    db.refresh(portfolio)
-    return _portfolio_out(db, portfolio)
+    practice.buy(db, portfolio, payload.ticker, payload.qty)
+    return practice.summary(db, portfolio)
 
 
 @router.post("/sell", response_model=schemas.PortfolioOut)
 def sell(payload: schemas.TradeRequest, db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:write"))):
-    ticker = payload.ticker.upper()
+    """Sell at the latest price; the proceeds in EUR return to virtual cash."""
     portfolio = repo.get_or_create_portfolio(db, principal.subject)
-    instruments = repo.load_instruments(db)
-    universe = build_universe_metrics(instruments)
-    if ticker not in universe:
-        raise HTTPException(status_code=404, detail=f"Unknown ticker '{ticker}'")
-    position = db.execute(
-        select(models.Position).where(models.Position.portfolio_id == portfolio.id, models.Position.ticker == ticker)
-    ).scalar_one_or_none()
-    if position is None or payload.qty > position.qty:
-        raise HTTPException(status_code=400, detail="Not enough shares held to sell that quantity")
-
-    price = universe[ticker]["price"]
-    avg_cost = position.cost_basis / position.qty if position.qty else 0.0
-    proceeds = payload.qty * price
-    position.qty -= payload.qty
-    position.cost_basis -= avg_cost * payload.qty
-    portfolio.cash += proceeds
-    db.add(models.Transaction(portfolio_id=portfolio.id, ticker=ticker, side="sell", qty=payload.qty, price=price))
-    db.commit()
-    db.refresh(portfolio)
-    return _portfolio_out(db, portfolio)
+    practice.sell(db, portfolio, payload.ticker, payload.qty)
+    return practice.summary(db, portfolio)
 
 
 @router.post("/reset", response_model=schemas.PortfolioOut)
 def reset(db: Session = Depends(get_db), principal: Principal = Depends(require("portfolio:write"))):
+    """Start again: no positions, no history, EUR 10,000 cash."""
     portfolio = repo.get_or_create_portfolio(db, principal.subject)
-    for p in list(portfolio.positions):
-        db.delete(p)
-    for t in list(portfolio.transactions):
-        db.delete(t)
-    portfolio.cash = portfolio.starting_cash
-    db.commit()
-    db.refresh(portfolio)
-    return _portfolio_out(db, portfolio)
+    practice.reset(db, portfolio)
+    return practice.summary(db, portfolio)
 
 
 @router.get("/watchlist")

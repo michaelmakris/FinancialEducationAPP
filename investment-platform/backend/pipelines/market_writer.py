@@ -26,10 +26,11 @@ _BAR_FIELDS = ("open", "high", "low", "close", "volume", "adj_close")
 def ensure_instrument(
     db: Session, *, ticker: str, name: str, sector: str, asset_type: str, exchange: str,
     currency: str, data_source: str, country: str = "", lei: str | None = None, vendor_symbol: str | None = None,
+    market: str = "",
 ) -> Instrument:
     inst = db.execute(select(Instrument).where(Instrument.ticker == ticker)).scalar_one_or_none()
     fields = dict(name=name, sector=sector, asset_type=asset_type, exchange=exchange, currency=currency,
-                  data_source=data_source, country=country, lei=lei, vendor_symbol=vendor_symbol)
+                  data_source=data_source, country=country, lei=lei, vendor_symbol=vendor_symbol, market=market)
     if inst is None:
         inst = Instrument(id=str(uuid.uuid4()), ticker=ticker, **fields)
         db.add(inst)

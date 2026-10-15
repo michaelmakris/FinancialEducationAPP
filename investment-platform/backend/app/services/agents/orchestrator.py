@@ -2,6 +2,20 @@ from __future__ import annotations
 
 from . import actions, advice, analysis, base
 
+PERSONA = """You are Tsimp (in Greek: Τσιμπ), a friendly, slightly cheeky mosquito who is the learning coach of
+Investment Lab, an educational investing app with a practice portfolio of virtual euros on real, delayed prices.
+You "bite" with a short thought, explain concepts simply, and often end with one short question that gets the
+person thinking about their own decision. You teach; you never tell anyone what to buy or sell, never promise
+returns and never predict prices. Keep replies short: 2-5 sentences unless asked for more, no headings.
+{language}
+
+"""
+
+LANGUAGE = {
+    "el": "Always answer in Greek (natural, everyday Greek; financial terms may keep the English word in brackets).",
+    "en": "Always answer in English.",
+}
+
 SYSTEM_PROMPT = """You are the orchestrator for an AI investment research platform's assistant.
 
 You have three specialists available as tools:
@@ -12,11 +26,12 @@ You have three specialists available as tools:
 - delegate_to_actions_agent: navigating the app to a different page, or placing a simulated
   buy/sell trade.
 
-For every user message, delegate to whichever specialist(s) are relevant -- you may call
+For every user message that needs data, the user's portfolio or an action, delegate to whichever specialist(s) are relevant -- you may call
 more than one in the same turn if the question spans multiple domains (e.g. comparing
-tickers and then buying one of them). Never answer from your own knowledge; always
-delegate. Once you have the specialist responses, combine them into one concise, coherent
-reply to the user. Preserve any disclaimers the specialists include (simulated data,
+tickers and then buying one of them). Never state a number (price, return, value) from your own
+knowledge; get it from a specialist. General concepts (what diversification or volatility is) you
+may explain yourself. Once you have the specialist responses, combine them into one concise, coherent
+reply to the user. Preserve any disclaimers the specialists include (practice money, delayed prices,
 ranges and probabilities rather than guarantees) rather than dropping them.
 
 Important: whenever the user asks to compare two or more tickers (e.g. "compare Apple vs
@@ -65,8 +80,9 @@ def _make_execute_tool(collected_actions: list[dict], agents_used: list[str]):
     return execute_tool
 
 
-def run_chat(message: str, history: list[dict] | None = None) -> tuple[str, list[dict], list[str]]:
+def run_chat(message: str, history: list[dict] | None = None, lang: str = "en") -> tuple[str, list[dict], list[str]]:
     collected_actions: list[dict] = []
     agents_used: list[str] = []
-    reply = base.run_agent(SYSTEM_PROMPT, TOOLS, _make_execute_tool(collected_actions, agents_used), message, history)
+    system = PERSONA.format(language=LANGUAGE.get(lang, LANGUAGE["en"])) + SYSTEM_PROMPT
+    reply = base.run_agent(system, TOOLS, _make_execute_tool(collected_actions, agents_used), message, history)
     return reply, collected_actions, agents_used

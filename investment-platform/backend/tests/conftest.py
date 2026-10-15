@@ -17,6 +17,8 @@ _tmp_db.close()  # Windows can't delete a file that's still open (see teardown b
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_db.name}"
 os.environ["MARKET_CACHE_TTL_S"] = "0"  # tests change data between requests
 os.environ["METRICS_REFRESH_S"] = "0"
+os.environ["QUOTE_CACHE_TTL_S"] = "0"
+os.environ["PRACTICE_DEFAULT_COSTS"] = "none"  # trading tests check exact cash; tests/test_costs.py covers costs  # every request sees the fake quotes as the test sets them
 
 # A throwaway "BFF" signing key, trusted by the API under test (see app/auth.py).
 BFF_KEY = Ed25519PrivateKey.generate()
@@ -96,3 +98,40 @@ def client(raw_client):
 @pytest.fixture(scope="session")
 def staff_client(raw_client):
     return _AuthedClient(raw_client, sub="staff-1", scope=CUSTOMER_SCOPES + " ops:read")
+
+
+# ---------------------------------------------------------------- practice trading on "real" instruments
+@pytest.fixture
+def practice_market(monkeypatch):
+    """Three tradable instruments (Athens EUR, US USD, crypto EUR) and fake live quotes, no network.
+    Tests change `prices[ticker]` (or `prices["USD"]`, USD per EUR) to move the market."""
+    import datetime as dt
+
+    from app.db import SessionLocal
+    from app.services import quotes
+    from pipelines import market_writer as w
+
+    db = SessionLocal()
+    for t, name, market, cur, src, sym in (("TESTA.AT", "Test Athens Co", "athens", "EUR", "yahoo", "TESTA.AT"),
+                                           ("TSTUS.US", "Test US Inc", "us", "USD", "yahoo", "TSTUS"),
+                                           ("TST-EUR", "Testcoin", "crypto", "EUR", "binance", "TSTEUR")):
+        w.ensure_instrument(db, ticker=t, name=name, sector="Test", asset_type="crypto" if market == "crypto" else "equity",
+                            exchange="", currency=cur, data_source=src, vendor_symbol=sym, market=market)
+    db.commit()
+    db.close()
+    prices = {"TESTA.AT": 10.0, "TSTUS.US": 100.0, "TST-EUR": 50.0, "USD": 1.25}   # 1 EUR = 1.25 USD
+    prev = {"TESTA.AT": 9.0, "TSTUS.US": 100.0, "TST-EUR": 50.0, "USD": 1.25}
+    by_symbol = {"TESTA.AT": "TESTA.AT", "TSTUS": "TSTUS.US", "TSTEUR": "TST-EUR", "EURUSD=X": "USD"}
+
+    def fake(key, currency):
+        now = dt.datetime.now(dt.timezone.utc)
+        day0 = quotes.athens_midnight_utc(now)
+        early = day0 + (now - day0) / 4
+        return quotes.Intraday(ticker=key, currency=currency, prev_close=prev[key],
+                               points=[(early, prev[key]), (now, prices[key])], market_open=True)
+
+    monkeypatch.setattr(quotes, "fetch_yahoo_intraday",
+                        lambda ticker, symbol: fake(by_symbol[symbol], "USD" if symbol in ("TSTUS", "EURUSD=X") else "EUR"))
+    monkeypatch.setattr(quotes, "fetch_binance_intraday", lambda ticker, pair: fake(by_symbol[pair], "EUR"))
+    quotes.clear_cache()
+    return prices

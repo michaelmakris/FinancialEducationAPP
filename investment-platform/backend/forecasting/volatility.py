@@ -29,7 +29,7 @@ EWMA_LAMBDA = 0.94
 EVAL_YEARS = 3
 GARCH_WINDOW = 1000               # observations used to fit GARCH (speed; older data adds little)
 MIN_EMPIRICAL_OBS = 750           # ~3 years: below this a historical loss frequency is too noisy to serve
-BENCHMARKS = {"AT": "GD.AT", "crypto": "BTC-EUR", "other": "^GSPC"}
+BENCHMARKS = {"AT": "GD.AT", "crypto": "BTC-EUR", "europe": "^STOXX50E", "other": "^GSPC"}
 
 
 def log_returns(prices: pd.Series) -> np.ndarray:
@@ -153,7 +153,11 @@ def choose(ev: dict) -> tuple[str, bool, str, str]:
 def benchmark_for(ticker: str, asset_type: str) -> str:
     if asset_type == "crypto":
         return BENCHMARKS["crypto"]
-    return BENCHMARKS["AT"] if ticker.endswith(".AT") else BENCHMARKS["other"]
+    if ticker.endswith(".AT"):
+        return BENCHMARKS["AT"]
+    if ticker.endswith(".US") or ticker.startswith("^") or "." not in ticker:
+        return BENCHMARKS["other"]
+    return BENCHMARKS["europe"]  # euro-area stocks and the EUR-listed ETFs
 
 
 def beta(asset: pd.Series, bench: pd.Series, days: int = 365) -> tuple[float | None, float | None]:

@@ -62,15 +62,15 @@ def test_unknown_scopes_in_token_are_ignored(raw_client):
     assert r.status_code == 403
 
 
-def test_each_customer_has_an_isolated_portfolio(raw_client):
+def test_each_customer_has_an_isolated_portfolio(raw_client, practice_market):
     alice, bob = auth_headers(sub="alice"), auth_headers(sub="bob")
     raw_client.post("/portfolio/reset", headers=alice)
     raw_client.post("/portfolio/reset", headers=bob)
-    assert raw_client.post("/portfolio/buy", json={"ticker": "AAPL", "qty": 3}, headers=auth_headers(sub="alice")).status_code == 200
+    assert raw_client.post("/portfolio/buy", json={"ticker": "TESTA.AT", "qty": 3}, headers=auth_headers(sub="alice")).status_code == 200
     raw_client.post("/portfolio/watchlist/NVDA", headers=auth_headers(sub="alice"))
     a = raw_client.get("/portfolio", headers=auth_headers(sub="alice")).json()
     b = raw_client.get("/portfolio", headers=auth_headers(sub="bob")).json()
-    assert [p["ticker"] for p in a["positions"]] == ["AAPL"] and a["cash"] < 10000
+    assert [p["ticker"] for p in a["positions"]] == ["TESTA.AT"] and a["cash"] < 10000
     assert b["positions"] == [] and b["cash"] == 10000
     assert raw_client.get("/portfolio/watchlist", headers=auth_headers(sub="bob")).json() == []
 
@@ -82,13 +82,13 @@ def test_chat_agents_forward_the_callers_token(raw_client, monkeypatch):
 
     seen = {}
 
-    def fake_run_chat(message, history):
+    def fake_run_chat(message, history, lang="en"):
         seen["headers"] = auth.outbound_headers()
         return "ok", [], ["analysis"]
 
     monkeypatch.setattr(orchestrator, "run_chat", fake_run_chat)
     token = make_token(sub="carol")
-    r = raw_client.post("/chat", json={"message": "hi", "history": []}, headers={"Authorization": f"Bearer {token}"})
+    r = raw_client.post("/chat", json={"message": "tell me a story about markets", "history": []}, headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert seen["headers"] == {"Authorization": f"Bearer {token}"}
     assert base.get_backend.__code__.co_names.count("outbound_headers") == 1  # helper actually uses it

@@ -124,13 +124,16 @@ def build_server(http: httpx.AsyncClient, verifier: AccessKeyVerifier) -> MCPSer
     @server.tool(annotations=READ)
     @tracked
     async def search_instruments(query: str | None = None,
+                                 market: Literal["athens", "europe", "us", "etf", "crypto", "index"] | None = None,
                                  asset_type: Literal["equity", "index", "etf", "crypto"] | None = None,
                                  country: str | None = None, sector: str | None = None) -> list[dict]:
-        """Find instruments with real market data: Euronext Athens stocks (tickers like ETE.AT), indices
-        (GD.AT = Athens General, ^STOXX50E, ^GSPC), ETFs and crypto (BTC-EUR...). Returns last close,
-        1-day change and 1-month / 1-year returns (fractions: 0.05 = +5%)."""
+        """Find instruments with real market data by market: athens (Athens-listed stocks, e.g. ETE.AT),
+        europe (euro-area large caps, e.g. SAP.DE), us (US large caps, tickers end in .US, e.g. AAPL.US),
+        etf (EUR-listed ETFs, e.g. IWDA.AS), crypto (BTC-EUR...) and index (GD.AT, ^STOXX50E, ^GSPC;
+        not tradable). Returns last close, 1-day change and 1-month / 1-year returns (0.05 = +5%)."""
         return await api.call("GET", "/v1/instruments", "market:read",
-                              params={"q": query, "asset_type": asset_type, "country": country, "sector": sector})
+                              params={"q": query, "market": market, "asset_type": asset_type, "country": country,
+                                      "sector": sector})
 
     @server.tool(annotations=READ)
     @tracked
@@ -270,7 +273,7 @@ def build_server(http: httpx.AsyncClient, verifier: AccessKeyVerifier) -> MCPSer
     @server.tool(annotations=WRITE)
     @tracked
     async def place_virtual_trade(side: Literal["buy", "sell"], ticker: str, quantity: float) -> dict:
-        """Buy or sell in the user's VIRTUAL practice portfolio (no real money, simulated prices). Only when
+        """Buy or sell in the user's VIRTUAL practice portfolio (virtual euros, real delayed prices). Only when
         the user explicitly asks for this trade. Needs an access key with 'trade' access."""
         if quantity <= 0:
             raise ToolError("quantity must be positive")

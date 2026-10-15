@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..auth import Principal, require
 from ..db import get_db
+from ..services import llm
 from proposals import questionnaire, service
 
 router = APIRouter(prefix="/v1", tags=["proposals"])
@@ -33,6 +34,7 @@ class AnswersIn(BaseModel):
 
 class ProposalIn(BaseModel):
     use_ai: bool = False
+    provider: str | None = None  # model for the AI wording; default LLM_PROVIDER
 
 
 def _narrative_kind(source: str) -> str:
@@ -43,6 +45,12 @@ def _narrative_kind(source: str) -> str:
     if "unavailable" in source:
         return "ai_unavailable"
     return "template"
+
+
+@router.get("/llm/providers", dependencies=[Depends(require("market:read"))])
+def llm_providers():
+    """Models the app can use for the assistant and for AI wording; `default` is LLM_PROVIDER."""
+    return llm.available()
 
 
 @router.get("/profile/questionnaire", dependencies=[Depends(require("market:read"))])
@@ -70,8 +78,12 @@ def post_profile(body: AnswersIn, db: Session = Depends(get_db), principal: Prin
 @router.post("/proposals", status_code=201)
 def create_proposal(body: ProposalIn | None = None, db: Session = Depends(get_db),
                     principal: Principal = Depends(require("portfolio:write"))):
+    provider = body.provider if body else None
+    if provider and provider not in {p["id"] for p in llm.available()}:
+        raise HTTPException(422, f"Unknown or unconfigured model provider '{provider}'")
     try:
-        prop = service.generate(db, principal.subject, use_ai=bool(body and body.use_ai))
+        with llm.use(provider):
+            prop = service.generate(db, principal.subject, use_ai=bool(body and body.use_ai))
     except service.NoProfile:
         raise HTTPException(409, "Answer the risk questionnaire first (POST /v1/profile).")
     except RuntimeError as e:  # e.g. risk estimates not computed yet

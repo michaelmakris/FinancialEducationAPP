@@ -33,6 +33,8 @@ class Instrument(Base):
     country: Mapped[str] = mapped_column(String(2), default="", server_default="")
     lei: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)  # links ESEF fundamentals
     vendor_symbol: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # athens | europe | us | etf | crypto | index (pipelines/catalog.py MARKETS); "" for the demo
+    market: Mapped[str] = mapped_column(String(10), default="", server_default="", index=True)
 
     price_bars: Mapped[list["PriceBar"]] = relationship(back_populates="instrument", cascade="all, delete-orphan")
     financial_facts: Mapped[list["FinancialFact"]] = relationship(back_populates="instrument", cascade="all, delete-orphan")
@@ -256,6 +258,8 @@ class Portfolio(Base):
     customer_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
     cash: Mapped[float] = mapped_column(Float, nullable=False, default=10000.0)
     starting_cash: Mapped[float] = mapped_column(Float, nullable=False, default=10000.0)
+    # broker cost profile (services/costs.py): none | low | typical | high; NULL = PRACTICE_DEFAULT_COSTS
+    cost_profile: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     positions: Mapped[list["Position"]] = relationship(back_populates="portfolio", cascade="all, delete-orphan")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="portfolio", cascade="all, delete-orphan")
@@ -282,10 +286,16 @@ class Transaction(Base):
     ticker: Mapped[str] = mapped_column(String(20), nullable=False)
     side: Mapped[str] = mapped_column(String(4), nullable=False)  # buy | sell
     qty: Mapped[float] = mapped_column(Float, nullable=False)
-    price: Mapped[float] = mapped_column(Float, nullable=False)
+    price: Mapped[float] = mapped_column(Float, nullable=False)  # per unit, in EUR (the portfolio's currency)
     executed_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
+    # the quote as traded: native price/currency and the FX rate used (EUR per unit of `currency`)
+    price_local: Mapped[float | None] = mapped_column(Float, nullable=True)
+    currency: Mapped[str] = mapped_column(String(10), default="EUR", server_default="EUR")
+    fx_rate: Mapped[float] = mapped_column(Float, default=1.0, server_default="1")
+    realized_pnl: Mapped[float | None] = mapped_column(Float, nullable=True)  # sells: proceeds - average cost, EUR
+    fees: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")  # transaction costs of this trade, EUR
 
     portfolio: Mapped["Portfolio"] = relationship(back_populates="transactions")
 
@@ -319,6 +329,7 @@ class ChatInteraction(Base):
     status: Mapped[str] = mapped_column(String(10), nullable=False, index=True)  # ok | error
     detail: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     latency_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")  # all model calls of the turn
 
 
 class PipelineRun(Base):

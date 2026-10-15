@@ -15,7 +15,7 @@ You can navigate the app to a different page, or place a simulated buy/sell trad
 user's virtual portfolio. Valid pages: {', '.join(VALID_PAGES)}.
 
 For the 'compare' page, resolve the tickers the user means (e.g. "Apple vs Google" ->
-AAPL, GOOGL) and pass them in `tickers` so the comparison is populated automatically --
+AAPL.US, GOOGL.US; US shares end in .US, Athens shares in .AT, e.g. ETE.AT; crypto like BTC-EUR) and pass them in `tickers` so the comparison is populated automatically --
 you don't need a tool to do this, resolving a well-known company name to its ticker
 symbol is not a financial fact that needs grounding, unlike a price/ratio/score.
 

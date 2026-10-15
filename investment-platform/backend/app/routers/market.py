@@ -1,5 +1,5 @@
 """
-Real market data: Euronext Athens equities, benchmarks and crypto (/v1).
+Real market data: Athens, European and US stocks, ETFs, benchmarks and crypto (/v1).
 Prices come from pipelines/ (see pipelines/SOURCES.md); returns use adjusted closes.
 """
 from __future__ import annotations
@@ -14,6 +14,8 @@ from .. import market_repo as mr
 from .. import market_schemas as s
 from ..db import get_db
 from ..services import market as calc
+from ..services import practice, quotes
+from pipelines.catalog import MARKETS
 
 router = APIRouter(prefix="/v1", tags=["market data"])
 
@@ -53,7 +55,7 @@ def _overview(db: Session) -> list[dict]:
             prev = ser[-2][1] if len(ser) > 1 else None
             rows.append(dict(
                 ticker=i.ticker, name=i.name, asset_type=i.asset_type, sector=i.sector, country=i.country,
-                exchange=i.exchange, currency=i.currency, data_source=i.data_source,
+                market=i.market, exchange=i.exchange, currency=i.currency, data_source=i.data_source,
                 last_date=last[0] if last else None, last_close=last[1] if last else None,
                 change_1d=(last[1] / prev - 1) if last and prev else None,
                 return_1m=rets.get("1m"), return_1y=rets.get("1y"), has_fundamentals=i.id in with_facts,
@@ -63,8 +65,18 @@ def _overview(db: Session) -> list[dict]:
     return mr.cached(("overview",), build)
 
 
+@router.get("/markets", response_model=list[s.MarketInfo])
+def list_markets(db: Session = Depends(get_db)):
+    """The markets a customer can browse, with how many instruments each has."""
+    counts: dict[str, int] = {}
+    for r in _overview(db):
+        counts[r["market"]] = counts.get(r["market"], 0) + 1
+    return [s.MarketInfo(id=k, count=counts[k], **v) for k, v in MARKETS.items() if counts.get(k)]
+
+
 @router.get("/instruments", response_model=list[s.InstrumentSummary])
 def list_instruments(
+    market: Optional[Literal["athens", "europe", "us", "etf", "crypto", "index"]] = None,
     asset_type: Optional[Literal["equity", "index", "etf", "crypto"]] = None,
     country: Optional[str] = Query(None, description="ISO-2, e.g. GR"),
     sector: Optional[str] = None,
@@ -72,6 +84,8 @@ def list_instruments(
     db: Session = Depends(get_db),
 ):
     rows = _overview(db)
+    if market:
+        rows = [r for r in rows if r["market"] == market]
     if asset_type:
         rows = [r for r in rows if r["asset_type"] == asset_type]
     if country:
@@ -82,6 +96,22 @@ def list_instruments(
         ql = q.lower()
         rows = [r for r in rows if ql in r["ticker"].lower() or ql in r["name"].lower()]
     return rows
+
+
+@router.get("/instruments/{ticker}/intraday", response_model=s.IntradayOut)
+def instrument_intraday(ticker: str, db: Session = Depends(get_db)):
+    """Today's 5-minute prices (the latest session when the exchange is closed) and the price in EUR."""
+    inst = _instrument_or_404(db, ticker)
+    q = quotes.intraday(db, inst)
+    cur = q.currency or inst.currency
+    fx = quotes.fx_intraday(db, cur).last or 1.0
+    return s.IntradayOut(
+        ticker=inst.ticker, name=inst.name, market=inst.market, currency=cur, prev_close=q.prev_close, last=q.last,
+        change_pct=(q.last / q.prev_close - 1) if q.last and q.prev_close else None, as_of=q.as_of,
+        market_open=q.market_open, live=q.live, fx_rate=fx, last_eur=q.last * fx if q.last is not None else None,
+        tradable=inst.market in practice.TRADABLE_MARKETS,
+        points=[s.PricePoint(t=t, price=p) for t, p in q.points],
+    )
 
 
 @router.get("/instruments/{ticker}", response_model=s.InstrumentDetail)

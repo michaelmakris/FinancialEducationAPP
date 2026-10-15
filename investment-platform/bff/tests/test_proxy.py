@@ -116,6 +116,7 @@ def test_token_rejection_is_counted_separately(client, api):
     ("GET", "v1/predictions/instruments/ETE.AT"), ("GET", "v1/predictions/market"), ("GET", "v1/predictions/quality"),
     ("GET", "v1/predictions/models"), ("GET", "v1/profile/questionnaire"), ("GET", "v1/profile"), ("POST", "v1/profile"),
     ("POST", "v1/proposals"), ("GET", "v1/proposals"), ("GET", "v1/proposals/latest"), ("GET", "v1/proposals/12"),
+    ("GET", "v1/llm/providers"),
 ])
 def test_planning_routes_are_proxied(client, api, method, path):
     signup(client)
@@ -128,3 +129,17 @@ def test_planning_routes_are_proxied(client, api, method, path):
 def test_planning_route_variants_not_on_the_list_are_refused(client, api, path):
     signup(client)
     assert client.get(f"/bff/api/{path}").status_code == 404 and api.calls == []
+
+
+@pytest.mark.parametrize("method,path", [
+    ("GET", "v1/markets"), ("GET", "v1/instruments/AAPL.US/intraday"), ("GET", "v1/instruments/BTC-EUR/intraday"),
+    ("GET", "portfolio/intraday"), ("GET", "portfolio/transactions"), ("POST", "portfolio/buy"), ("POST", "portfolio/sell"),
+    ("POST", "portfolio/reset"), ("POST", "v1/coach/pre-trade"), ("GET", "v1/coach/events"), ("GET", "v1/coach/tip"),
+    ("GET", "v1/coach/learn/portfolio"), ("GET", "v1/coach/lessons/diversification"),
+    ("GET", "portfolio/costs"), ("POST", "portfolio/cost-profile"),
+])
+def test_practice_trading_routes_are_proxied(client, api, method, path):
+    signup(client)
+    r = client.request(method, f"/bff/api/{path}", json={} if method == "POST" else None,
+                       headers=csrf(client) if method == "POST" else None)
+    assert r.status_code == 200 and api.calls[-1].url.path == f"/{path}"

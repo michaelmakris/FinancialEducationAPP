@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+import datetime
+
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -45,10 +47,19 @@ class TradeRequest(BaseModel):
 class PositionOut(BaseModel):
     ticker: str
     qty: float
-    avg_cost: float
-    price: float
-    value: float
+    avg_cost: float                      # EUR per unit
+    price: float                         # latest, EUR per unit
+    value: float                         # EUR
     unrealized_pnl_pct: float
+    name: str = ""
+    market: str = ""
+    currency: str = ""                   # the instrument's own currency
+    price_local: Optional[float] = None  # latest, in `currency`
+    unrealized_pnl: float = 0.0
+    day_change_pct: Optional[float] = None
+    market_open: bool = False
+    live: bool = False                   # False = provider unavailable, last daily close used
+    as_of: Optional[datetime.datetime] = None
 
 
 class PortfolioOut(BaseModel):
@@ -57,6 +68,42 @@ class PortfolioOut(BaseModel):
     total_value: float
     total_pnl_pct: float
     positions: list[PositionOut]
+    holdings_value: float = 0.0
+    total_pnl: float = 0.0
+    realized_pnl: float = 0.0
+    fees_paid: float = 0.0                 # all transaction costs so far, EUR
+    cost_profile: str = "typical"          # services/costs.py PROFILES
+    day_change: float = 0.0
+    day_change_pct: float = 0.0
+    currency: str = "EUR"
+
+
+class TransactionOut(BaseModel):
+    id: int
+    ticker: str
+    side: str
+    qty: float
+    price: float                         # EUR per unit
+    price_local: Optional[float] = None
+    currency: str = "EUR"
+    fx_rate: float = 1.0
+    amount: float                        # EUR, before costs
+    fees: float = 0.0                    # transaction costs, EUR
+    realized_pnl: Optional[float] = None
+    executed_at: datetime.datetime
+
+
+class ValuePoint(BaseModel):
+    t: datetime.datetime
+    value: float
+    cash: float
+
+
+class PortfolioIntradayOut(BaseModel):
+    date: datetime.date
+    start_value: float
+    points: list[ValuePoint]
+    trades: list[TransactionOut]
 
 
 class SimulationRequest(BaseModel):
@@ -82,6 +129,8 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: list[ChatMessage] = []
+    provider: Optional[str] = None  # one of GET /v1/llm/providers; default LLM_PROVIDER
+    lang: Literal["el", "en"] = "en"  # the language Tsimp answers in
 
 
 class ChatAction(BaseModel):
@@ -96,6 +145,8 @@ class ChatAction(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     actions: list[ChatAction] = []
+    source: Literal["rules", "ai"] = "ai"   # rules = fixed wording with real numbers, no AI call
+    lesson: Optional[dict] = None           # a lesson the app shows with its follow-up buttons
 
 
 class SimulationResponse(BaseModel):

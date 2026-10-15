@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { api } from "./auth/bff.js";
 import { AccountMenu } from "./auth/AuthGate.jsx";
 import PlanPage from "./plan/PlanPage.jsx";
+import MarketsPage from "./market/MarketsPage.jsx";
+import InstrumentPage from "./market/InstrumentPage.jsx";
+import PortfolioPage from "./market/PortfolioPage.jsx";
+import { usePractice } from "./market/usePractice.js";
+import LoansPage from "./loans/LoansPage.jsx";
+import CoachProvider from "./coach/CoachProvider.jsx";
+import CoachChat from "./coach/CoachChat.jsx";
+import CoachPopups from "./coach/CoachPopups.jsx";
+import LanguagePicker from "./coach/LanguagePicker.jsx";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, Radar, ComposedChart, Area,
@@ -11,7 +19,7 @@ import {
   Home, Search, LineChart as LineChartIcon, Columns3, SlidersHorizontal,
   Briefcase, MessageSquare, Send, Plus, X, Info, AlertTriangle, Loader2,
   ChevronRight, Star, Trash2, RefreshCw, Bot, User,
-  Images, GraduationCap, Heart, Bookmark, Share2, Compass,
+  Images, GraduationCap, Heart, Bookmark, Share2, Compass, Landmark, Ellipsis,
 } from "lucide-react";
 
 /* ============================================================================
@@ -307,6 +315,46 @@ const GLOBAL_CSS = `
   .ip-sidebar-footer { display: none; }
 }
 
+/* Phones: brand bar on top, tab bar at the bottom, the rest under "More" */
+.ip-tabbar { display: none; }
+@media (max-width: 860px) {
+  .ip-sidebar .ip-nav { display: none; }
+  .ip-sidebar { padding: 10px 14px; padding-top: calc(10px + env(safe-area-inset-top)); }
+  .ip-tabbar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 900;
+    background: #0E1526; border-top: 1px solid rgba(255,255,255,0.08);
+    padding: 4px 2px calc(4px + env(safe-area-inset-bottom));
+  }
+  .ip-tab {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 52px; justify-content: center;
+    font-size: 11px; color: #A9B1C3; background: none; border: 0; cursor: pointer;
+  }
+  .ip-tab.active { color: #fff; font-weight: 600; }
+  .ip-tab.active svg { color: var(--ip-accent, #2F5BFF); }
+  .ip-main { padding-bottom: 110px; }
+  .ip-coach-fab { bottom: calc(72px + env(safe-area-inset-bottom)) !important; right: 14px !important; }
+  .ip-coach-popup { bottom: calc(72px + env(safe-area-inset-bottom)) !important; left: 10px !important; right: 10px; width: auto !important; }
+  .ip-coach-chat {
+    left: 0 !important; right: 0 !important; bottom: 0 !important; width: 100% !important; max-width: 100% !important;
+    border-radius: 18px 18px 0 0 !important; max-height: 88vh; padding-bottom: env(safe-area-inset-bottom);
+  }
+  .ip-hide-sm { display: none !important; }
+}
+.ip-sheet-backdrop { position: fixed; inset: 0; z-index: 950; background: rgba(11,18,32,0.45); display: flex; align-items: flex-end; }
+.ip-sheet {
+  width: 100%; background: var(--ip-card-bg, #fff); border-radius: 18px 18px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 14px; max-height: 85vh; overflow-y: auto; animation: ip-fade-in-kf 0.2s ease;
+}
+.ip-sheet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ip-sheet-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 6px; border-radius: 12px;
+  border: 1px solid ${COLOR.line}; background: transparent; font-size: 13px; cursor: pointer; color: ${COLOR.ink};
+}
+.ip-sheet-btn.active { border-color: var(--ip-accent, #2F5BFF); color: var(--ip-accent, #2F5BFF); font-weight: 600; }
+.ip-sheet-settings { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; border-top: 1px solid ${COLOR.line}; }
+.ip-back { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; cursor: pointer; padding: 6px 0; margin-bottom: 6px;
+  font-size: 14px; font-weight: 600; color: var(--ip-accent, #2F5BFF); min-height: 40px; }
+
 @media (max-width: 640px) {
   .ip-brand-sub { display: none; }
   .ip-demo-pill { display: none; }
@@ -332,7 +380,6 @@ const fmtCompact = (v) => {
 };
 const fmtMoney = (v) => (v == null || !isFinite(v)) ? "\u2014" : v.toLocaleString(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const uid = () => Math.random().toString(36).slice(2, 10);
 
 /* ============================================================================
    ANALYTICS ENGINE
@@ -842,7 +889,6 @@ function ThemePicker({ value, onChange }) {
     </div>
   );
 }
-const DEFAULT_PORTFOLIO = { cash: 10000, startingCash: 10000, positions: {}, transactions: [] };
 
 function useStoredState(key, fallback) {
   const [value, setValue] = useState(fallback);
@@ -1278,267 +1324,6 @@ function FeedPage({ dataset, universeMetrics, scores, watchlist, toggleWatch, li
 }
 
 /* ============================================================================
-   PAGE: DISCOVER (screener)
-   ============================================================================ */
-function DiscoverPage({ universeMetrics, scores, watchlist, toggleWatch, goTo }) {
-  const [assetFilter, setAssetFilter] = useState("all");
-  const [sortKey, setSortKey] = useState("overall");
-  const [sortDir, setSortDir] = useState("desc");
-
-  const all = Object.values(universeMetrics);
-  const filtered = all.filter((m) => assetFilter === "all" || m.assetType === assetFilter);
-
-  const rows = filtered.map((m) => ({
-    m,
-    overall: scores[m.ticker].overall,
-    r1m: m.market.return1M,
-    r12m: m.market.return12M,
-    vol: m.market.volatility,
-    pe: m.valuation ? m.valuation.pe : null,
-  }));
-  rows.sort((a, b) => {
-    const dir = sortDir === "desc" ? -1 : 1;
-    const av = a[sortKey], bv = b[sortKey];
-    if (av == null) return 1; if (bv == null) return -1;
-    return (av - bv) * dir;
-  });
-
-  const setSort = (key) => {
-    if (sortKey === key) setSortDir(sortDir === "desc" ? "asc" : "desc");
-    else { setSortKey(key); setSortDir("desc"); }
-  };
-
-  return (
-    <div>
-      <h1 className="ip-page-title">Discover</h1>
-      <p className="ip-page-sub">Screen the demo universe by overall score, momentum, risk, or valuation. Scores are cross-sectional percentiles within this 15-instrument demo set -- with only 15 instruments they're illustrative of the method, not a real ranking.</p>
-
-      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-        {["all", "equity", "etf", "crypto"].map((f) => (
-          <span key={f} className={`ip-chip ${assetFilter === f ? "on" : ""}`} onClick={() => setAssetFilter(f)}>
-            {f === "all" ? "All" : f === "etf" ? "ETFs" : f[0].toUpperCase() + f.slice(1) + "s"}
-          </span>
-        ))}
-      </div>
-
-      <div className="ip-table-wrap">
-        <table className="ip-table">
-          <thead>
-            <tr>
-              <th></th>
-              <th onClick={() => setSort("overall")}>Score</th>
-              <th>Ticker</th>
-              <th>Sector</th>
-              <th onClick={() => setSort("pe")}>P/E</th>
-              <th onClick={() => setSort("r1m")}>1M</th>
-              <th onClick={() => setSort("r12m")}>12M</th>
-              <th onClick={() => setSort("vol")}>Volatility</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ m, overall, r1m, r12m, vol, pe }, idx) => (
-              <tr key={m.ticker} className="clickable ip-stagger-row" style={{ animationDelay: `${Math.min(idx * 25, 300)}ms` }} onClick={() => goTo("asset", m.ticker)}>
-                <td onClick={(e) => { e.stopPropagation(); toggleWatch(m.ticker); }}>
-                  <Star size={14} fill={watchlist.includes(m.ticker) ? "var(--ip-accent)" : "none"} color={watchlist.includes(m.ticker) ? "var(--ip-accent)" : COLOR.lineStrong} />
-                </td>
-                <td style={{ fontWeight: 600 }}>{overall != null ? Math.round(overall) : "\u2014"}</td>
-                <td style={{ fontWeight: 600 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                    <TickerAvatar ticker={m.ticker} size={24} />
-                    {m.ticker}
-                  </div>
-                </td>
-                <td style={{ color: COLOR.muted }}>{m.sector}</td>
-                <td>{pe != null ? fmtNum(pe) : "\u2014"}</td>
-                <td><ChangeBadge value={r1m} size={12} /></td>
-                <td><ChangeBadge value={r12m} size={12} /></td>
-                <td>{fmtPct(vol)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================================
-   PAGE: ASSET DETAIL
-   ============================================================================ */
-function rollingSma(close, window) {
-  const out = new Array(close.length).fill(null);
-  for (let i = window - 1; i < close.length; i++) {
-    let sum = 0;
-    for (let k = i - window + 1; k <= i; k++) sum += close[k];
-    out[i] = sum / window;
-  }
-  return out;
-}
-
-function AssetPage({ ticker, dataset, universeMetrics, scores, watchlist, toggleWatch, compareList, toggleCompare, goTo, onBuy }) {
-  const m = universeMetrics[ticker];
-  const scoreInfo = scores[ticker];
-  const inst = dataset.instruments.find((i) => i.ticker === ticker);
-  const [range, setRange] = useState(252);
-  const [scoreTab, setScoreTab] = useState(m.assetType === "equity" ? "value" : "momentum");
-  const [buyQty, setBuyQty] = useState(10);
-
-  const chartData = useMemo(() => {
-    const close = inst.close;
-    const sma50 = rollingSma(close, 50), sma200 = rollingSma(close, 200);
-    const dates = dataset.dates;
-    const start = Math.max(0, close.length - range);
-    const out = [];
-    for (let i = start; i < close.length; i++) {
-      out.push({ date: dates[i].slice(5), close: close[i], sma50: sma50[i], sma200: sma200[i] });
-    }
-    return out;
-  }, [inst, range, dataset.dates]);
-
-  const scoreTabs = m.assetType === "equity"
-    ? [["value", "Value"], ["quality", "Quality"], ["growth", "Growth"], ["momentum", "Momentum"], ["risk", "Risk"], ["macro", "Macro"]]
-    : [["momentum", "Momentum"], ["risk", "Risk"], ["macro", "Macro"]];
-
-  const f = latestFundamentals(inst);
-  const inWatch = watchlist.includes(ticker);
-  const inCompare = compareList.includes(ticker);
-
-  return (
-    <div>
-      <div className="ip-row" style={{ alignItems: "flex-start" }}>
-        <div>
-          <h1 className="ip-page-title" style={{ marginBottom: 0 }}>{m.name}</h1>
-          <div style={{ fontSize: 13, color: COLOR.muted }}>{m.ticker} · {m.sector} · {m.assetType.toUpperCase()}</div>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <div className="ip-serif" style={{ fontSize: 26, fontWeight: 600 }}><AnimatedNumber value={m.price} format={fmtPrice} /></div>
-          <ChangeBadge value={m.market.return1M} />
-          <span style={{ fontSize: 11.5, color: COLOR.muted }}> 1M</span>
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: 8, margin: "12px 0 16px" }}>
-        <button className="ip-btn secondary sm" onClick={() => toggleWatch(ticker)}>
-          <Star size={13} fill={inWatch ? "var(--ip-accent)" : "none"} color={inWatch ? "var(--ip-accent)" : undefined} /> {inWatch ? "Watching" : "Watch"}
-        </button>
-        <button className="ip-btn secondary sm" onClick={() => toggleCompare(ticker)}>
-          <Columns3 size={13} /> {inCompare ? "Remove from compare" : "Compare"}
-        </button>
-      </div>
-
-      <Card title="Price" right={
-        <div style={{ display: "flex", gap: 4 }}>
-          {[["1M", 21], ["6M", 126], ["1Y", 252], ["Max", 504]].map(([lbl, d]) => (
-            <span key={lbl} className={`ip-chip ${range === d ? "on" : ""}`} onClick={() => setRange(d)} style={{ padding: "2px 8px", fontSize: 11 }}>{lbl}</span>
-          ))}
-        </div>
-      }>
-        <ResponsiveContainer width="100%" height={220}>
-          <ComposedChart data={chartData}>
-            <defs>
-              <linearGradient id="ip-price-fill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--ip-accent)" stopOpacity={0.28} />
-                <stop offset="100%" stopColor="var(--ip-accent)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke={COLOR.line} vertical={false} />
-            <XAxis dataKey="date" tick={{ fontSize: 10, fill: COLOR.muted }} minTickGap={40} axisLine={{ stroke: COLOR.line }} tickLine={false} />
-            <YAxis tick={{ fontSize: 10, fill: COLOR.muted }} domain={["auto", "auto"]} axisLine={false} tickLine={false} width={44} />
-            <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${COLOR.line}` }} />
-            <Area type="monotone" dataKey="close" stroke={COLOR.ink} strokeWidth={1.75} fill="url(#ip-price-fill)" dot={false} name="Close" />
-            <Line type="monotone" dataKey="sma50" stroke="var(--ip-accent)" strokeWidth={1.25} dot={false} name="50-day avg" />
-            <Line type="monotone" dataKey="sma200" stroke={COLOR.warn} strokeWidth={1.25} dot={false} name="200-day avg" />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </Card>
-
-      <Card title="Factor score">
-        <ScoreHero overall={scoreInfo.overall} categoryScores={scoreInfo.categoryScores} />
-        <hr className="ip-divider" />
-        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-          {scoreTabs.map(([key, label]) => (
-            <span key={key} className={`ip-chip ${scoreTab === key ? "on" : ""}`} onClick={() => setScoreTab(key)}>{label}</span>
-          ))}
-        </div>
-        <ScoreBreakdownTable breakdown={scoreInfo.breakdown} category={scoreTab} />
-      </Card>
-
-      {f && (
-        <Card title="Fundamentals (annual, simulated)">
-          <div className="ip-table-wrap">
-            <table className="ip-table">
-              <thead><tr><th></th>{inst.fundamentals.map((r) => <th key={r.fiscal_year}>FY{r.fiscal_year}</th>)}</tr></thead>
-              <tbody>
-                <tr><td>Revenue</td>{inst.fundamentals.map((r) => <td key={r.fiscal_year}>{fmtCompact(r.revenue)}</td>)}</tr>
-                <tr><td>Net income</td>{inst.fundamentals.map((r) => <td key={r.fiscal_year}>{fmtCompact(r.net_income)}</td>)}</tr>
-                <tr><td>Free cash flow</td>{inst.fundamentals.map((r) => <td key={r.fiscal_year}>{fmtCompact(r.free_cash_flow)}</td>)}</tr>
-                <tr><td>EPS</td>{inst.fundamentals.map((r) => <td key={r.fiscal_year}>${r.eps.toFixed(2)}</td>)}</tr>
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
-
-      <div className="ip-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-        {m.valuation && (
-          <Card title="Valuation">
-            {[["P/E", m.valuation.pe, fmtNum], ["P/B", m.valuation.pb, fmtNum], ["P/S", m.valuation.ps, fmtNum],
-              ["EV/EBITDA", m.valuation.evEbitda, fmtNum], ["FCF yield", m.valuation.fcfYield, fmtPct], ["Market cap", m.valuation.marketCap, fmtCompact]]
-              .map(([label, val, fmt]) => (
-                <div className="ip-row" key={label} style={{ padding: "4px 0", fontSize: 13 }}>
-                  <span style={{ color: COLOR.muted }}>{label}</span><span style={{ fontWeight: 600 }}>{fmt(val)}</span>
-                </div>
-              ))}
-          </Card>
-        )}
-        {m.quality && (
-          <Card title="Quality">
-            {[["ROE", m.quality.roe], ["ROA", m.quality.roa], ["Gross margin", m.quality.grossMargin],
-              ["Operating margin", m.quality.operatingMargin], ["FCF margin", m.quality.fcfMargin]]
-              .map(([label, val]) => (
-                <div className="ip-row" key={label} style={{ padding: "4px 0", fontSize: 13 }}>
-                  <span style={{ color: COLOR.muted }}>{label}</span><span style={{ fontWeight: 600 }}>{fmtPct(val)}</span>
-                </div>
-              ))}
-          </Card>
-        )}
-        <Card title="Risk & market">
-          {[["Ann. volatility", m.market.volatility, fmtPct], ["Max drawdown", m.market.maxDrawdown, fmtPct],
-            ["Sharpe ratio", m.market.sharpe, fmtNum], ["Sortino ratio", m.market.sortino, fmtNum],
-            ["1-day 95% VaR", m.market.var95, fmtPct], ["Beta vs SPY", m.market.beta, fmtNum], ["RSI (14)", m.market.rsi14, (v) => fmtNum(v, 0)]]
-            .map(([label, val, fmt]) => (
-              <div className="ip-row" key={label} style={{ padding: "4px 0", fontSize: 13 }}>
-                <span style={{ color: COLOR.muted }}>{label}</span><span style={{ fontWeight: 600 }}>{fmt(val)}</span>
-              </div>
-            ))}
-        </Card>
-        {m.balanceSheet && (
-          <Card title="Balance sheet">
-            {[["Debt / equity", m.balanceSheet.debtEquity, fmtNum], ["Net debt / EBITDA", m.balanceSheet.netDebtToEbitda, fmtNum],
-              ["Interest coverage", m.balanceSheet.interestCoverage, fmtNum], ["Current ratio", m.balanceSheet.currentRatio, fmtNum]]
-              .map(([label, val, fmt]) => (
-                <div className="ip-row" key={label} style={{ padding: "4px 0", fontSize: 13 }}>
-                  <span style={{ color: COLOR.muted }}>{label}</span><span style={{ fontWeight: 600 }}>{fmt(val)}</span>
-                </div>
-              ))}
-          </Card>
-        )}
-      </div>
-
-      <Card title="Add to virtual portfolio">
-        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div style={{ maxWidth: 110 }}>
-            <label className="ip-label">Quantity</label>
-            <input className="ip-input" type="number" min="1" value={buyQty} onChange={(e) => setBuyQty(parseInt(e.target.value || "0", 10))} />
-          </div>
-          <button className="ip-btn" onClick={() => onBuy(ticker, buyQty, m.price)}>Buy {buyQty} @ {fmtPrice(m.price)}</button>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-/* ============================================================================
    PAGE: COMPARE
    ============================================================================ */
 const CATEGORY_KEYS = [
@@ -1797,145 +1582,6 @@ function SimulatorPage({ dataset }) {
 }
 
 /* ============================================================================
-   PAGE: VIRTUAL PORTFOLIO
-   ============================================================================ */
-function PortfolioPage({ portfolio, universeMetrics, onBuy, onSell, onReset, goTo }) {
-  const tickers = Object.keys(universeMetrics).sort();
-  const [ticker, setTicker] = useState(tickers[0]);
-  const [qty, setQty] = useState(10);
-  const [confirmReset, setConfirmReset] = useState(false);
-
-  const positions = Object.entries(portfolio.positions).filter(([, p]) => p.qty > 0);
-  const holdingsValue = positions.reduce((sum, [t, p]) => sum + p.qty * (universeMetrics[t]?.price || 0), 0);
-  const totalValue = portfolio.cash + holdingsValue;
-  const pnl = totalValue / portfolio.startingCash - 1;
-
-  const donutData = [
-    { name: "Cash", value: portfolio.cash, color: COLOR.lineStrong },
-    ...positions.map(([t, p], idx) => ({
-      name: t, value: p.qty * (universeMetrics[t]?.price || 0),
-      color: ["var(--ip-accent)", COLOR.warn, COLOR.positive, COLOR.negative, "var(--ip-accent-deep)"][idx % 5],
-    })),
-  ];
-
-  const currentPrice = universeMetrics[ticker]?.price || 0;
-  const maxSellQty = portfolio.positions[ticker]?.qty || 0;
-
-  return (
-    <div>
-      <h1 className="ip-page-title">Virtual portfolio</h1>
-      <p className="ip-page-sub">Paper trading on simulated prices, starting from {fmtMoney(portfolio.startingCash)} in virtual cash. Saved to this browser only.</p>
-
-      <Card>
-        <div className="ip-row">
-          <div>
-            <div style={{ fontSize: 11.5, color: COLOR.muted }}>Total value</div>
-            <div className="ip-serif" style={{ fontSize: 28, fontWeight: 600 }}><AnimatedNumber value={totalValue} format={fmtMoney} /></div>
-            <ChangeBadge value={pnl} /> <span style={{ fontSize: 11.5, color: COLOR.muted }}>since inception</span>
-          </div>
-          {donutData.length > 1 && (
-            <div style={{ width: 110, height: 110 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={donutData} dataKey="value" innerRadius={30} outerRadius={50} paddingAngle={1}>
-                    {donutData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-        <div style={{ fontSize: 12, color: COLOR.muted, marginTop: 6 }}>Cash: {fmtMoney(portfolio.cash)}</div>
-      </Card>
-
-      <Card title="Trade">
-        <div className="ip-grid" style={{ gridTemplateColumns: "1.2fr 1fr", marginBottom: 10 }}>
-          <div>
-            <label className="ip-label">Instrument</label>
-            <select className="ip-select" value={ticker} onChange={(e) => setTicker(e.target.value)}>
-              {tickers.map((t) => <option key={t} value={t}>{t} — {universeMetrics[t].name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="ip-label">Quantity</label>
-            <input className="ip-input" type="number" min="1" value={qty} onChange={(e) => setQty(parseInt(e.target.value || "0", 10))} />
-          </div>
-        </div>
-        <div className="ip-row" style={{ marginBottom: 10 }}>
-          <span style={{ fontSize: 12.5, color: COLOR.muted }}>Price: {fmtPrice(currentPrice)} · Est. cost: {fmtMoney(qty * currentPrice)}</span>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="ip-btn" onClick={() => onBuy(ticker, qty, currentPrice)} disabled={qty <= 0 || qty * currentPrice > portfolio.cash}>Buy</button>
-          <button className="ip-btn secondary" onClick={() => onSell(ticker, qty, currentPrice)} disabled={qty <= 0 || qty > maxSellQty}>Sell</button>
-        </div>
-        {qty * currentPrice > portfolio.cash && <div style={{ fontSize: 12, color: COLOR.negative, marginTop: 6 }}>Not enough virtual cash for this buy.</div>}
-      </Card>
-
-      <Card title="Holdings">
-        {positions.length === 0 ? <div className="ip-empty">No positions yet -- place your first virtual trade above.</div> : (
-          <div className="ip-table-wrap">
-            <table className="ip-table">
-              <thead><tr><th>Ticker</th><th>Qty</th><th>Avg cost</th><th>Price</th><th>Value</th><th>P&L</th></tr></thead>
-              <tbody>
-                {positions.map(([t, p]) => {
-                  const price = universeMetrics[t]?.price || 0;
-                  const value = p.qty * price;
-                  const avgCost = p.costBasis / p.qty;
-                  const pnlPct = value / p.costBasis - 1;
-                  return (
-                    <tr key={t}>
-                      <td style={{ fontWeight: 600 }}>{t}</td>
-                      <td>{p.qty}</td>
-                      <td>{fmtPrice(avgCost)}</td>
-                      <td>{fmtPrice(price)}</td>
-                      <td>{fmtMoney(value)}</td>
-                      <td><ChangeBadge value={pnlPct} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      <Card title="Transaction log">
-        {portfolio.transactions.length === 0 ? <div className="ip-empty">No transactions yet.</div> : (
-          <div className="ip-table-wrap">
-            <table className="ip-table">
-              <thead><tr><th>Date</th><th>Side</th><th>Ticker</th><th>Qty</th><th>Price</th></tr></thead>
-              <tbody>
-                {[...portfolio.transactions].reverse().slice(0, 15).map((tx) => (
-                  <tr key={tx.id}>
-                    <td>{tx.date}</td>
-                    <td className={tx.side === "buy" ? "ip-pos" : "ip-neg"}>{tx.side.toUpperCase()}</td>
-                    <td>{tx.ticker}</td>
-                    <td>{tx.qty}</td>
-                    <td>{fmtPrice(tx.price)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {portfolio.transactions.length > 0 && (
-          <div style={{ marginTop: 10 }}>
-            {!confirmReset ? (
-              <button className="ip-btn danger sm" onClick={() => setConfirmReset(true)}><Trash2 size={12} /> Reset portfolio</button>
-            ) : (
-              <span style={{ fontSize: 12.5 }}>Reset to {fmtMoney(portfolio.startingCash)} cash and clear history? {" "}
-                <span className="ip-link" onClick={() => { onReset(); setConfirmReset(false); }}>Yes, reset</span> {" \u00b7 "}
-                <span className="ip-link" onClick={() => setConfirmReset(false)}>Cancel</span>
-              </span>
-            )}
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-/* ============================================================================
    PAGE: LEARN (bite-sized financial education cards)
    ============================================================================ */
 const LEARN_CATEGORIES = {
@@ -2059,164 +1705,45 @@ function LearnPage() {
    the conversation and its open/closed state alive across navigation.
    ============================================================================ */
 
-function AssistantWidget({ universeMetrics, portfolio, goTo, onBuy, onSell, setCompareList }) {
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState([
-    { role: "assistant", content: 'Hi! Ask me about a company, your portfolio, or ask me to do something -- e.g. "compare Apple vs Google" or "buy 5 shares of NVDA".' },
-  ]);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState(null);
-  const bottomRef = useRef(null);
-
-  useEffect(() => {
-    if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, sending, open]);
-
-  const applyAction = useCallback((action) => {
-    if (action.type === "navigate") {
-      if (action.tickers && action.tickers.length >= 2) {
-        setCompareList(action.tickers.slice(0, 4).map((t) => t.toUpperCase()));
-      }
-      goTo(action.page, action.ticker);
-      return null;
-    }
-    if (action.type === "trade") {
-      const price = universeMetrics[action.ticker]?.price;
-      if (price == null) return `Couldn't find a price for ${action.ticker}, so the trade wasn't placed.`;
-      if (action.side === "buy") {
-        const cost = action.qty * price;
-        if (cost > portfolio.cash) {
-          return `Not enough cash to buy ${action.qty} ${action.ticker} (needs $${cost.toFixed(2)}, have $${portfolio.cash.toFixed(2)}).`;
-        }
-        onBuy(action.ticker, action.qty, price);
-        return null;
-      }
-      const existing = portfolio.positions[action.ticker];
-      if (!existing || action.qty > existing.qty) {
-        return `Not enough ${action.ticker} shares held to sell ${action.qty}.`;
-      }
-      onSell(action.ticker, action.qty, price);
-      return null;
-    }
-    return null;
-  }, [goTo, onBuy, onSell, portfolio, universeMetrics, setCompareList]);
-
-  const send = useCallback(async () => {
-    const text = input.trim();
-    if (!text || sending) return;
-    const history = messages.map(({ role, content }) => ({ role, content }));
-    setInput("");
-    setError(null);
-    setMessages((m) => [...m, { role: "user", content: text }]);
-    setSending(true);
-    try {
-      // through the BFF: the session cookie + CSRF token authenticate the customer
-      const data = await api("/chat", { method: "POST", body: { message: text, history } });
-      const actionNotes = (data.actions || []).map(applyAction).filter(Boolean);
-      const reply = [data.reply, ...actionNotes].filter(Boolean).join("\n\n");
-      setMessages((m) => [...m, { role: "assistant", content: reply || "(no response)" }]);
-    } catch (e) {
-      setError(e.message || "Couldn't reach the AI assistant -- is the backend running?");
-    } finally {
-      setSending(false);
-    }
-  }, [input, sending, messages, applyAction]);
-
-  if (!open) {
-    return (
-      <button
-        className="ip-btn"
-        onClick={() => setOpen(true)}
-        style={{ position: "fixed", right: 24, bottom: 24, zIndex: 1000, borderRadius: 999, width: 52, height: 52, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 20px rgba(0,0,0,0.25)" }}
-        title="AI analyst"
-      >
-        <MessageSquare size={20} />
-      </button>
-    );
-  }
-
-  return (
-    <div style={{
-      position: "fixed", right: 24, bottom: 24, zIndex: 1000, width: 380, maxWidth: "calc(100vw - 48px)",
-      background: "var(--ip-card-bg, #fff)", border: `1px solid ${COLOR.lineStrong}`, borderRadius: 14,
-      boxShadow: "0 12px 40px rgba(0,0,0,0.3)", display: "flex", flexDirection: "column", overflow: "hidden",
-    }}>
-      <div className="ip-row" style={{ padding: "10px 14px", borderBottom: `1px solid ${COLOR.lineStrong}`, justifyContent: "space-between" }}>
-        <div style={{ fontWeight: 600, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}>
-          <Bot size={16} /> AI analyst
-        </div>
-        <button className="ip-btn secondary sm" onClick={() => setOpen(false)} style={{ padding: 4 }}>
-          <X size={14} />
-        </button>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 420, overflowY: "auto", padding: "10px 14px" }}>
-        {messages.map((m, i) => (
-          <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start", flexDirection: m.role === "user" ? "row-reverse" : "row" }}>
-            <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: m.role === "user" ? "var(--ip-accent-soft)" : COLOR.lineStrong }}>
-              {m.role === "user" ? <User size={14} /> : <Bot size={14} />}
-            </div>
-            <div style={{
-              background: m.role === "user" ? "var(--ip-accent-soft)" : "transparent",
-              border: `1px solid ${COLOR.lineStrong}`,
-              borderRadius: 10, padding: "8px 12px", fontSize: 13.5, lineHeight: 1.5,
-              whiteSpace: "pre-wrap", maxWidth: "80%",
-            }}>
-              {m.content}
-            </div>
-          </div>
-        ))}
-        {sending ? (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", color: COLOR.muted, fontSize: 13 }}>
-            <Loader2 size={14} className="ip-spin" /> thinking&hellip;
-          </div>
-        ) : null}
-        <div ref={bottomRef} />
-      </div>
-
-      {error ? (
-        <div style={{ display: "flex", gap: 6, alignItems: "center", color: COLOR.negative, fontSize: 12.5, padding: "0 14px 8px" }}>
-          <AlertTriangle size={14} /> {error}
-        </div>
-      ) : null}
-
-      <div className="ip-row" style={{ padding: "10px 14px", borderTop: `1px solid ${COLOR.lineStrong}`, gap: 8 }}>
-        <input
-          className="ip-input"
-          style={{ flex: 1 }}
-          placeholder='Ask about a ticker, or say "buy 5 NVDA"...'
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-          disabled={sending}
-        />
-        <button className="ip-btn" onClick={send} disabled={sending || !input.trim()}>
-          <Send size={14} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /* ============================================================================
    APP SHELL
    ============================================================================ */
+// "asset" (one instrument) is a detail page reached from Markets/Portfolio, not a menu tab.
 const NAV_TABS = [
   ["home", "Home", Home],
-  ["feed", "Feed", Images],
-  ["discover", "Discover", Search],
-  ["asset", "Asset", LineChartIcon],
-  ["compare", "Compare", Columns3],
-  ["simulator", "Simulator", SlidersHorizontal],
+  ["discover", "Markets", Search],
   ["portfolio", "Portfolio", Briefcase],
+  ["loans", "Loans", Landmark],
   ["plan", "My plan", Compass],
   ["learn", "Learn", GraduationCap],
+  ["feed", "Feed", Images],
+  ["compare", "Compare", Columns3],
+  ["simulator", "Simulator", SlidersHorizontal],
 ];
+// Phones: these four sit in the bottom bar; everything else is under "More".
+const MOBILE_TABS = ["home", "discover", "portfolio", "loans"];
 
-function todayStr() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
+function MoreSheet({ page, goTo, onClose, theme, setTheme }) {
+  return (
+    <div className="ip-sheet-backdrop" onClick={onClose}>
+      <div className="ip-sheet" role="dialog" aria-label="More" onClick={(e) => e.stopPropagation()}>
+        <div className="ip-sheet-grid">
+          {NAV_TABS.filter(([key]) => !MOBILE_TABS.includes(key)).map(([key, label, icon]) => (
+            <button key={key} className={`ip-sheet-btn ${page === key ? "active" : ""}`} onClick={() => { goTo(key); onClose(); }}>
+              {React.createElement(icon, { size: 20 })} {label}
+            </button>
+          ))}
+        </div>
+        <div className="ip-sheet-settings">
+          <AccountMenu />
+          <LanguagePicker />
+          <ThemePicker value={theme} onChange={setTheme} />
+          <span className="ip-demo-pill" style={{ display: "block" }}>Practice money · delayed prices · not investment advice</span>
+        </div>
+        <button className="ip-btn secondary" style={{ width: "100%" }} onClick={onClose}><X size={14} /> Close</button>
+      </div>
+    </div>
+  );
 }
 
 export default function App() {
@@ -2224,17 +1751,38 @@ export default function App() {
   const scores = useMemo(() => computeFactorScores(universeMetrics), [universeMetrics]);
 
   const [page, setPage] = useState("home");
-  const [selectedTicker, setSelectedTicker] = useState("AAPL");
+  const [selectedTicker, setSelectedTicker] = useState("ETE.AT");
   const [compareList, setCompareList] = useState(["AAPL", "MSFT"]);
   const [watchlist, setWatchlist, watchlistLoaded] = useStoredState(STORAGE_KEYS.watchlist, ["AAPL", "NVDA"]);
-  const [portfolio, setPortfolio, portfolioLoaded] = useStoredState(STORAGE_KEYS.portfolio, DEFAULT_PORTFOLIO);
+  const practice = usePractice();
   const [likes, setLikes] = useStoredState(STORAGE_KEYS.likes, []);
   const [theme, setTheme] = useStoredState(STORAGE_KEYS.theme, DEFAULT_THEME);
 
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  // Every page change is a browser history step, so the phone's back gesture/button and the
+  // in-app Back button both return to the previous page.
   const goTo = useCallback((p, ticker) => {
     if (ticker) setSelectedTicker(ticker);
     setPage(p);
+    window.history.pushState({ page: p, ticker: ticker || null }, "");
     window.scrollTo({ top: 0 });
+  }, []);
+  const goBack = useCallback(() => {
+    if (window.history.state?.page) window.history.back();
+    else goTo("home");
+  }, [goTo]);
+  useEffect(() => {
+    if (!window.history.state?.page) window.history.replaceState({ page: "home", ticker: null }, "");
+    const onPop = (e) => {
+      const s = e.state;
+      if (!s?.page) return;
+      if (s.ticker) setSelectedTicker(s.ticker);
+      setPage(s.page);
+      setMoreOpen(false);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   const toggleWatch = useCallback((ticker) => {
@@ -2249,35 +1797,8 @@ export default function App() {
     setCompareList((cur) => cur.includes(ticker) ? cur.filter((t) => t !== ticker) : cur.length < 4 ? [...cur, ticker] : cur);
   }, []);
 
-  const handleBuy = useCallback((ticker, qty, price) => {
-    if (!qty || qty <= 0) return;
-    const cost = qty * price;
-    if (cost > portfolio.cash) return;
-    const existing = portfolio.positions[ticker] || { qty: 0, costBasis: 0 };
-    const nextPositions = { ...portfolio.positions, [ticker]: { qty: existing.qty + qty, costBasis: existing.costBasis + cost } };
-    const tx = { id: uid(), ticker, side: "buy", qty, price, date: todayStr() };
-    setPortfolio({ ...portfolio, cash: portfolio.cash - cost, positions: nextPositions, transactions: [...portfolio.transactions, tx] });
-  }, [portfolio, setPortfolio]);
-
-  const handleSell = useCallback((ticker, qty, price) => {
-    const existing = portfolio.positions[ticker];
-    if (!existing || qty <= 0 || qty > existing.qty) return;
-    const avgCost = existing.costBasis / existing.qty;
-    const proceeds = qty * price;
-    const remainingQty = existing.qty - qty;
-    const nextPositions = { ...portfolio.positions, [ticker]: { qty: remainingQty, costBasis: avgCost * remainingQty } };
-    const tx = { id: uid(), ticker, side: "sell", qty, price, date: todayStr() };
-    setPortfolio({ ...portfolio, cash: portfolio.cash + proceeds, positions: nextPositions, transactions: [...portfolio.transactions, tx] });
-  }, [portfolio, setPortfolio]);
-
-  const handleReset = useCallback(() => {
-    setPortfolio(DEFAULT_PORTFOLIO);
-  }, [setPortfolio]);
-
-  const holdingsValue = Object.entries(portfolio.positions).reduce(
-    (sum, [t, p]) => sum + (p.qty > 0 ? p.qty * (universeMetrics[t]?.price || 0) : 0), 0);
-  const portfolioValue = portfolio.cash + holdingsValue;
-  const portfolioPnl = portfolioValue / portfolio.startingCash - 1;
+  const portfolioValue = practice.portfolio?.total_value ?? 0;
+  const portfolioPnl = practice.portfolio?.total_pnl_pct ?? 0;
 
   let content;
   if (page === "home") {
@@ -2285,22 +1806,25 @@ export default function App() {
   } else if (page === "feed") {
     content = <FeedPage dataset={DATASET} universeMetrics={universeMetrics} scores={scores} watchlist={watchlist} toggleWatch={toggleWatch} likes={likes} toggleLike={toggleLike} goTo={goTo} />;
   } else if (page === "discover") {
-    content = <DiscoverPage universeMetrics={universeMetrics} scores={scores} watchlist={watchlist} toggleWatch={toggleWatch} goTo={goTo} />;
+    content = <MarketsPage watchlist={watchlist} toggleWatch={toggleWatch} goTo={goTo} />;
   } else if (page === "asset") {
-    content = <AssetPage key={selectedTicker} ticker={selectedTicker} dataset={DATASET} universeMetrics={universeMetrics} scores={scores} watchlist={watchlist} toggleWatch={toggleWatch} compareList={compareList} toggleCompare={toggleCompare} goTo={goTo} onBuy={handleBuy} />;
+    content = <InstrumentPage key={selectedTicker} ticker={selectedTicker} practice={practice} watchlist={watchlist} toggleWatch={toggleWatch} goTo={goTo} onBack={goBack} />;
   } else if (page === "compare") {
     content = <ComparePage dataset={DATASET} universeMetrics={universeMetrics} scores={scores} compareList={compareList} toggleCompare={toggleCompare} goTo={goTo} />;
   } else if (page === "simulator") {
     content = <SimulatorPage dataset={DATASET} />;
   } else if (page === "portfolio") {
-    content = <PortfolioPage portfolio={portfolio} universeMetrics={universeMetrics} onBuy={handleBuy} onSell={handleSell} onReset={handleReset} goTo={goTo} />;
+    content = <PortfolioPage practice={practice} goTo={goTo} />;
   } else if (page === "plan") {
     content = <PlanPage />;
   } else if (page === "learn") {
     content = <LearnPage />;
+  } else if (page === "loans") {
+    content = <LoansPage />;
   }
 
   return (
+    <CoachProvider page={page} version={practice.version}>
     <div className="ip-root ip-shell" style={themeCssVars(THEMES.find((t) => t.id === theme.themeId) || THEMES[0], theme.intensity)}>
       <style>{GLOBAL_CSS}</style>
       <aside className="ip-sidebar ip-scroll">
@@ -2317,21 +1841,31 @@ export default function App() {
         </nav>
         <div className="ip-sidebar-footer">
           <AccountMenu />
+          <LanguagePicker />
           <ThemePicker value={theme} onChange={setTheme} />
-          <span className="ip-demo-pill">Simulated data — not investment advice</span>
+          <span className="ip-demo-pill">Practice money · delayed prices · not investment advice</span>
         </div>
       </aside>
       <div className="ip-content">
         <div className="ip-main">{content}</div>
       </div>
-      <AssistantWidget
-        universeMetrics={universeMetrics}
-        portfolio={portfolio}
-        goTo={goTo}
-        onBuy={handleBuy}
-        onSell={handleSell}
-        setCompareList={setCompareList}
-      />
+      <nav className="ip-tabbar" aria-label="Main">
+        {MOBILE_TABS.map((key) => {
+          const [, label, Icon] = NAV_TABS.find(([k]) => k === key);
+          return (
+            <button key={key} className={`ip-tab ${page === key ? "active" : ""}`} onClick={() => goTo(key)}>
+              <Icon size={20} /><span>{label}</span>
+            </button>
+          );
+        })}
+        <button className={`ip-tab ${moreOpen || !MOBILE_TABS.includes(page) ? "active" : ""}`} onClick={() => setMoreOpen(true)}>
+          <Ellipsis size={20} /><span>More</span>
+        </button>
+      </nav>
+      {moreOpen && <MoreSheet page={page} goTo={goTo} onClose={() => setMoreOpen(false)} theme={theme} setTheme={setTheme} />}
+      <CoachChat practice={practice} goTo={goTo} setCompareList={setCompareList} />
+      <CoachPopups goTo={goTo} />
     </div>
+    </CoachProvider>
   );
 }

@@ -141,11 +141,35 @@ def compute_snapshots(db: Session, full: bool = False, only: list[str] | None = 
 # ---------------------------------------------------------------------------
 # Euronext Athens equities + benchmarks (Yahoo)
 # ---------------------------------------------------------------------------
+def _exchange(symbol: str) -> tuple[str, str]:
+    for suffix, (exchange, country) in catalog.EXCHANGES.items():
+        if symbol.endswith(suffix):
+            return exchange, country
+    return "", ""
+
+
 def _equity_universe() -> list[dict]:
-    out = [dict(ticker=t, name=n, sector=s, asset_type="equity", country="GR", currency="EUR", lei=lei)
-           for t, n, s, lei in catalog.GREEK_EQUITIES]
-    out += [dict(ticker=t, name=n, sector=s, asset_type=a, country=c, currency=cur, lei=None)
-            for t, n, s, a, c, cur in catalog.BENCHMARKS]
+    """Every Yahoo-priced instrument: ticker (ours), symbol (Yahoo's), market, exchange, country."""
+    out = []
+    for t, n, s, lei in catalog.GREEK_EQUITIES:
+        out.append(dict(ticker=t, symbol=t, name=n, sector=s, asset_type="equity", market="athens", lei=lei))
+    for t, n, s in catalog.ATHENS_MORE:
+        out.append(dict(ticker=t, symbol=t, name=n, sector=s, asset_type="equity", market="athens", lei=None))
+    for t, n, s in catalog.EUROPE_EQUITIES:
+        out.append(dict(ticker=t, symbol=t, name=n, sector=s, asset_type="equity", market="europe", lei=None))
+    for sym, n, s, exch in catalog.US_EQUITIES:
+        out.append(dict(ticker=f"{sym}.US", symbol=sym, name=n, sector=s, asset_type="equity", market="us",
+                        lei=None, exchange=exch, country="US", currency="USD"))
+    for t, n, s in catalog.ETFS:
+        out.append(dict(ticker=t, symbol=t, name=n, sector=s, asset_type="etf", market="etf", lei=None, country=""))
+    for t, n, s, a, c, cur in catalog.BENCHMARKS:
+        out.append(dict(ticker=t, symbol=t, name=n, sector=s, asset_type=a, market="index", lei=None,
+                        exchange="", country=c, currency=cur))
+    for spec in out:
+        exchange, country = _exchange(spec["symbol"])
+        spec.setdefault("exchange", exchange)
+        spec.setdefault("country", country)
+        spec.setdefault("currency", "EUR")
     return out
 
 
@@ -157,15 +181,15 @@ def load_equities(db: Session, full: bool = False, only: list[str] | None = None
         try:
             inst = w.ensure_instrument(
                 db, ticker=spec["ticker"], name=spec["name"], sector=spec["sector"], asset_type=spec["asset_type"],
-                exchange="Euronext Athens" if spec["ticker"].endswith(".AT") else "", currency=spec["currency"],
-                data_source="yahoo", country=spec["country"], lei=spec["lei"], vendor_symbol=spec["ticker"],
+                exchange=spec["exchange"], currency=spec["currency"], data_source="yahoo", country=spec["country"],
+                lei=spec["lei"], vendor_symbol=spec["symbol"], market=spec["market"],
             )
             last = None if full else w.last_bar_date(db, inst)
             start = EQUITY_HISTORY_START if last is None else last - datetime.timedelta(days=EQUITY_LOOKBACK_D)
-            meta, bars = yahoo.fetch_daily(spec["ticker"], start)
+            meta, bars = yahoo.fetch_daily(spec["symbol"], start)
             if last is not None and meta.get("has_corporate_events"):
                 # dividend/split in the window: adjusted closes before it changed too
-                meta, bars = yahoo.fetch_daily(spec["ticker"], EQUITY_HISTORY_START)
+                meta, bars = yahoo.fetch_daily(spec["symbol"], EQUITY_HISTORY_START)
                 res.notes.append(f"{spec['ticker']} re-based (dividend/split)")
             bars, dropped = yahoo.drop_phantom_bars(bars)
             if dropped:
@@ -196,7 +220,7 @@ def load_crypto(db: Session, full: bool = False, only: list[str] | None = None) 
         try:
             inst = w.ensure_instrument(
                 db, ticker=ticker, name=name, sector="Crypto", asset_type="crypto", exchange="Binance",
-                currency="EUR", data_source="binance", vendor_symbol=pair,
+                currency="EUR", data_source="binance", vendor_symbol=pair, market="crypto",
             )
             insts[cg_id] = inst
             last = None if full else w.last_bar_date(db, inst)

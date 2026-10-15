@@ -148,6 +148,22 @@ def _ideas(db: Session, profile: int, vol_preds: dict) -> dict[str, list[dict]]:
 
 
 # ---------------------------------------------------------------- proposal
+def _holding_series(db: Session, tickers: list[str]) -> dict[str, dict]:
+    """{ticker: {asset_type, sector, market, close}}: a year of closes on the dates every holding traded."""
+    insts = mr.get_instruments(db, tickers)
+    since = datetime.date.today() - datetime.timedelta(days=400)
+    series = mr.adj_close_series(db, [i.id for i in insts.values()], since=since)
+    common = None
+    for i in insts.values():
+        days = {d for d, _ in series.get(i.id, [])}
+        common = days if common is None else common & days
+    out = {}
+    for i in insts.values():
+        closes = [v for d, v in series.get(i.id, []) if d in (common or set())]
+        out[i.ticker] = {"asset_type": i.asset_type, "sector": i.sector, "market": i.market, "close": closes}
+    return out
+
+
 def generate(db: Session, customer_id: str, use_ai: bool = False) -> models.Proposal:
     ra = latest_assessment(db, customer_id)
     if ra is None:
@@ -158,11 +174,10 @@ def generate(db: Session, customer_id: str, use_ai: bool = False) -> models.Prop
     p["assessment"] = assessment
 
     # the customer's practice portfolio
-    from app.routers.portfolio import _portfolio_out  # same valuation the portfolio page shows
-    pf = _portfolio_out(db, repo.get_or_create_portfolio(db, customer_id)).model_dump()
-    demo = {i["ticker"]: i for i in repo.load_instruments(db)}
+    from app.services import practice  # same valuation the portfolio page shows
+    pf = practice.summary(db, repo.get_or_create_portfolio(db, customer_id))
     target = {a["sleeve"]: a["weight_pct"] for a in p["allocation"]}
-    p["current"] = analysis.analyse(pf, demo, target)
+    p["current"] = analysis.analyse(pf, _holding_series(db, [x["ticker"] for x in pf["positions"]]), target)
     if not p["current"].get("empty"):
         p["current"]["stress_tests"] = engine.stress(p["current"]["weights_pct"], m)
 

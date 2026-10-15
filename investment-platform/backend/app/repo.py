@@ -64,14 +64,25 @@ def record_chat_interaction(
     status: str,
     detail: str,
     latency_ms: float,
+    tokens_used: int = 0,
 ) -> None:
     db.add(models.ChatInteraction(
         customer_id=customer_id,
         user_message=user_message[:10000], assistant_reply=assistant_reply[:10000],
         provider=provider, agents_used=",".join(agents_used)[:200], actions_json=actions_json,
-        status=status, detail=detail[:500], latency_ms=latency_ms,
+        status=status, detail=detail[:500], latency_ms=latency_ms, tokens_used=tokens_used,
     ))
     db.commit()
+
+
+def tokens_used_today(db: Session, customer_id: str) -> int:
+    """AI tokens this customer used since midnight UTC (the daily chat budget)."""
+    import datetime
+    from sqlalchemy import func
+    since = datetime.datetime.now(datetime.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+    return int(db.execute(select(func.coalesce(func.sum(models.ChatInteraction.tokens_used), 0))
+                          .where(models.ChatInteraction.customer_id == customer_id,
+                                 models.ChatInteraction.created_at >= since)).scalar() or 0)
 
 
 def get_or_create_portfolio(db: Session, customer_id: str) -> models.Portfolio:

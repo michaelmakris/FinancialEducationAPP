@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../auth/bff.js";
+import { ModelPicker } from "../llm/ModelPicker.jsx";
+import { useModelChoice } from "../llm/useModelChoice.js";
 
 // "My plan": risk questionnaire -> profile -> educational proposal for the practice portfolio.
 // All numbers come from the API (/v1/profile, /v1/proposals); nothing is computed here.
@@ -198,6 +200,7 @@ async function loadPlanState() {
 export default function PlanPage() {
   const [state, setState] = useState({ step: "loading" });
   const [useAi, setUseAi] = useState(false);
+  const model = useModelChoice();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -211,7 +214,7 @@ export default function PlanPage() {
     setBusy(true);
     setError(null);
     try {
-      const proposal = await api("/v1/proposals", { method: "POST", body: { use_ai: useAi } });
+      const proposal = await api("/v1/proposals", { method: "POST", body: { use_ai: useAi, provider: useAi ? model.value : null } });
       setState((s) => ({ ...s, step: "plan", proposal }));
     } catch (e) {
       setError(e.message);
@@ -235,6 +238,7 @@ export default function PlanPage() {
           <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
             <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} /> Friendlier wording (AI, fact-checked)
           </label>
+          {useAi && <ModelPicker providers={model.providers} value={model.value} onChange={model.change} />}
           <button type="button" className="ip-btn" disabled={busy} onClick={generate}>
             {busy ? "Building…" : state.step === "plan" ? "Refresh plan" : "Create my plan"}
           </button>

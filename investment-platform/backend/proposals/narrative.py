@@ -15,8 +15,6 @@ from __future__ import annotations
 import json
 import re
 
-import requests
-
 from app.config import settings
 
 DISCLAIMER = ("This is an educational illustration for your practice portfolio, built from your questionnaire "
@@ -78,17 +76,16 @@ def template(p: dict) -> str:
 
 
 def _call_llm(system: str, user: str) -> str:
-    if settings.llm_provider == "anthropic":
+    from app.services import llm  # selfhosted (vLLM), azure (Azure OpenAI in Foundry) or anthropic
+    if llm.current() == "anthropic":
         import anthropic
         client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         r = client.messages.create(model="claude-sonnet-5", max_tokens=900, system=system,
                                    messages=[{"role": "user", "content": user}])
         return "".join(b.text for b in r.content if b.type == "text")
-    resp = requests.post(f"{settings.selfhosted_base_url.rstrip('/')}/chat/completions", timeout=90, json={
-        "model": settings.selfhosted_model, "max_tokens": 900, "temperature": 0.2,
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]})
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"] or ""
+    msg = llm.chat([{"role": "system", "content": system}, {"role": "user", "content": user}],
+                   max_tokens=900, temperature=0.2)
+    return msg.get("content") or ""
 
 
 SYSTEM = ("You rewrite an investment-education explanation in warm, plain English for a beginner. Rules: keep every "

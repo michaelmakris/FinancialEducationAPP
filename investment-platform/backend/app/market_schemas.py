@@ -18,12 +18,43 @@ class Returns(BaseModel):
     y5: Optional[float] = None
 
 
+class MarketInfo(BaseModel):
+    id: str
+    label: str
+    currency: str
+    tradable: bool
+    count: int
+
+
+class PricePoint(BaseModel):
+    t: datetime.datetime
+    price: float
+
+
+class IntradayOut(BaseModel):
+    ticker: str
+    name: str
+    market: str
+    currency: str
+    prev_close: Optional[float] = None
+    last: Optional[float] = None          # in `currency`
+    change_pct: Optional[float] = None
+    as_of: Optional[datetime.datetime] = None
+    market_open: bool = False
+    live: bool = True                     # False = provider unavailable, latest daily close shown
+    fx_rate: float = 1.0                  # EUR per unit of `currency`
+    last_eur: Optional[float] = None
+    tradable: bool = False
+    points: list[PricePoint] = []
+
+
 class InstrumentSummary(BaseModel):
     ticker: str
     name: str
     asset_type: str
     sector: str
     country: str
+    market: str = ""
     exchange: str
     currency: str
     data_source: str

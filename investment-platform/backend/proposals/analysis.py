@@ -1,10 +1,11 @@
 """
 How the customer's practice portfolio compares with the proposal.
 
-The practice portfolio trades the app's simulated practice market (US shares, SPY,
-the AGG bond fund, BTC/ETH/SOL), so holdings are mapped to the same sleeves:
-equities and equity ETFs -> global shares, bond ETFs -> bonds, crypto -> crypto.
-Its volatility is measured from the holdings' own (simulated) daily returns.
+The practice portfolio trades real instruments (Athens, European and US shares, ETFs,
+crypto), so holdings are mapped to the proposal's sleeves: Athens shares -> Greek
+shares, other shares and equity ETFs -> global shares, bond ETFs -> bonds, crypto ->
+crypto. Its volatility is measured from the holdings' daily returns on the dates they
+all traded.
 """
 from __future__ import annotations
 
@@ -18,16 +19,19 @@ CONCENTRATION_LIMIT = 0.25   # one holding above 25% of the portfolio
 DEVIATION_FLAG = 10.0        # points away from the proposal per sleeve
 
 
-def sleeve_of(asset_type: str, sector: str) -> str:
+def sleeve_of(asset_type: str, sector: str, market: str = "") -> str:
     if asset_type == "crypto":
         return "crypto"
     if "bond" in (sector or "").lower():
         return "bonds"
+    if market == "athens":
+        return "greek_equity"
     return "global_equity"
 
 
 def analyse(portfolio: dict, instruments: dict[str, dict], target_pct: dict[str, float]) -> dict:
-    """portfolio: PortfolioOut-shaped dict; instruments: {ticker: {asset_type, sector, close: [...]}}."""
+    """portfolio: PortfolioOut-shaped dict; instruments: {ticker: {asset_type, sector, market, close: [...]}}
+    with every `close` list on the same dates."""
     total = portfolio["total_value"]
     if total <= 0:
         return {"empty": True}
@@ -36,7 +40,7 @@ def analyse(portfolio: dict, instruments: dict[str, dict], target_pct: dict[str,
     holdings = []
     for p in portfolio["positions"]:
         meta = instruments.get(p["ticker"], {"asset_type": "equity", "sector": ""})
-        s = sleeve_of(meta["asset_type"], meta.get("sector", ""))
+        s = sleeve_of(meta["asset_type"], meta.get("sector", ""), meta.get("market", ""))
         by_sleeve[s] = by_sleeve.get(s, 0.0) + p["value"]
         holdings.append({"ticker": p["ticker"], "sleeve": s, "weight": p["value"] / total, "value": p["value"]})
     weights_pct = {s: round(100 * v / total, 1) for s, v in by_sleeve.items()}
